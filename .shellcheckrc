@@ -1,0 +1,4 @@
+shell=bash
+# Source paths are resolved at runtime via PROJECT_ROOT/SCRIPT_DIR.
+# shellcheck cannot follow dynamic source paths.
+disable=SC1091

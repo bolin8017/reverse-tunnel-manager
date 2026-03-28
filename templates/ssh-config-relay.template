@@ -1,0 +1,9 @@
+Host {{SSH_HOST_ALIAS}}
+    HostName {{RELAY_HOST}}
+    Port {{RELAY_PORT}}
+    User {{RELAY_USER}}
+    IdentityFile {{SSH_KEY_PATH}}
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+    ExitOnForwardFailure yes
+    RemoteForward {{TUNNEL_PORT}} localhost:{{LOCAL_SSH_PORT}}

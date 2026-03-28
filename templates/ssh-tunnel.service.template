@@ -1,0 +1,12 @@
+[Unit]
+Description=SSH Reverse Tunnel to relay via autossh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/autossh -M 0 -N {{SSH_HOST_ALIAS}}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,11 @@
+*.bak
+*.bak.*
+*.swp
+*.swo
+*~
+*.log
+.DS_Store
+.env
+.idea/
+.vscode/
+.claude/
