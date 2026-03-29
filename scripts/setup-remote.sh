@@ -306,6 +306,14 @@ WantedBy=default.target"
     upsert_ssh_host_block "${HOME}/.ssh/config" "${ssh_host_alias}" "${expected_ssh_block}"
     chmod 600 "${HOME}/.ssh/config"
     info "SSH config updated and permissions set to 600."
+
+    # Restart the running service so it picks up the new SSH config.
+    if [[ "${needs_service}" == "false" ]] \
+        && systemctl --user is-active --quiet ssh-tunnel.service 2>/dev/null; then
+      info "Restarting ssh-tunnel.service to apply updated SSH config..."
+      systemctl --user restart ssh-tunnel.service
+      info "ssh-tunnel.service restarted."
+    fi
   fi
 
   # -----------------------------------------------------------------
