@@ -11,220 +11,14 @@ readonly PROJECT_ROOT
 COMMON_LIB="${PROJECT_ROOT}/lib/common.sh"
 readonly COMMON_LIB
 
-if [[ -f "${COMMON_LIB}" ]]; then
-  # shellcheck source=../lib/common.sh
-  source "${COMMON_LIB}"
-else
-  # Inline fallbacks — used when this script is run standalone.
-
-  # Color helpers (disabled when not a terminal).
-  if [[ -t 1 ]]; then
-    RED='\033[0;31m'; GREEN='\033[0;32m'
-    YELLOW='\033[0;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-  else
-    RED=''; GREEN=''; YELLOW=''; BLUE=''; NC=''
-  fi
-
-  info()  { printf '%b[INFO]%b %s\n' "${GREEN}" "${NC}" "$*"; }
-  warn()  { printf '%b[WARN]%b %s\n' "${YELLOW}" "${NC}" "$*" >&2; }
-  error() {
-    printf '%b[ERROR %s]%b %s\n' \
-      "${RED}" "$(date +'%Y-%m-%dT%H:%M:%S%z')" "${NC}" "$*" >&2
-  }
-  ask()   { printf '%b[?]%b %s' "${BLUE}" "${NC}" "$*"; }
-
-  #######################################
-  # Ensure ~/.ssh exists with correct permissions.
-  #######################################
-  ensure_ssh_dir() {
-    if [[ ! -d "${HOME}/.ssh" ]]; then
-      mkdir -p "${HOME}/.ssh"
-      chmod 700 "${HOME}/.ssh"
-      info "Created ${HOME}/.ssh/"
-    fi
-    local perm
-    perm=$(stat -c '%a' "${HOME}/.ssh" 2>/dev/null \
-        || stat -f '%Lp' "${HOME}/.ssh" 2>/dev/null)
-    if [[ "${perm}" != "700" ]]; then
-      chmod 700 "${HOME}/.ssh"
-      warn "Fixed ${HOME}/.ssh/ permissions to 700"
-    fi
-  }
-
-  #######################################
-  # Validate that a value is a valid TCP port number (1–65535).
-  # Arguments:
-  #   port_value — the value to validate.
-  #   label      — human-readable name for error messages.
-  # Returns:
-  #   1 if invalid.
-  #######################################
-  validate_port() {
-    local port_value="$1"
-    local label="${2:-Port}"
-    if ! [[ "${port_value}" =~ ^[0-9]+$ ]] \
-        || (( port_value < 1 || port_value > 65535 )); then
-      error "${label} must be a number between 1 and 65535, got: '${port_value}'"
-      return 1
-    fi
-  }
-
-  #######################################
-  # Extract a Host block from an SSH config file.
-  # Arguments:
-  #   config_file — path to SSH config file.
-  #   host_name   — the Host block name to extract.
-  # Returns:
-  #   0 if found, 1 if not found.
-  #######################################
-  extract_ssh_host_block() {
-    local config_file="$1"
-    local host_name="$2"
-    [[ -f "${config_file}" ]] || return 1
-
-    local result
-    result=$(awk -v host="${host_name}" '
-      /^Host / { if ($2 == host) found=1; else if (found) exit }
-      found { print }
-    ' "${config_file}")
-
-    if [[ -n "${result}" ]]; then
-      printf '%s\n' "${result}"
-      return 0
-    fi
-    return 1
-  }
-
-  #######################################
-  # Remove a Host block from an SSH config file.
-  # Arguments:
-  #   config_file — path to SSH config file.
-  #   host_name   — the Host block name to remove.
-  #######################################
-  remove_ssh_host_block() {
-    local config_file="$1"
-    local host_name="$2"
-    local tmp_file
-    tmp_file=$(mktemp)
-    trap 'rm -f "${tmp_file}"' RETURN
-
-    awk -v host="${host_name}" '
-      /^Host / {
-        if ($2 == host) { skip=1; next } else { skip=0 }
-      }
-      /^[^ \t]/ && !/^Host / { skip=0 }
-      !skip { print }
-    ' "${config_file}" > "${tmp_file}"
-
-    # Remove trailing blank lines (portable: command substitution strips them).
-    local content
-    content=$(cat "${tmp_file}")
-    printf '%s\n' "${content}" > "${tmp_file}"
-
-    mv "${tmp_file}" "${config_file}"
-  }
-
-  #######################################
-  # Append or update a Host block in an SSH config file.
-  # Arguments:
-  #   config_file   — path to SSH config file.
-  #   host_name     — the Host block name.
-  #   block_content — full Host block including the "Host ..." line.
-  #######################################
-  upsert_ssh_host_block() {
-    local config_file="$1"
-    local host_name="$2"
-    local block_content="$3"
-
-    ensure_ssh_dir
-
-    if [[ ! -f "${config_file}" ]]; then
-      printf '%s\n' "${block_content}" > "${config_file}"
-      chmod 600 "${config_file}"
-      info "Created ${config_file}"
-      return
-    fi
-
-    local existing
-    if existing=$(extract_ssh_host_block "${config_file}" "${host_name}" 2>/dev/null); then
-      warn "Host ${host_name} already exists in SSH config:"
-      echo "---"
-      echo "${existing}"
-      echo "---"
-      ask "Update to new settings? [y/N] "
-      read -r answer
-      if [[ "${answer}" =~ ^[Yy]$ ]]; then
-        cp "${config_file}" "${config_file}.bak.$(date +%Y%m%d%H%M%S)"
-        remove_ssh_host_block "${config_file}" "${host_name}"
-        printf '\n%s\n' "${block_content}" >> "${config_file}"
-        info "Updated Host ${host_name} block"
-      else
-        info "Keeping existing settings, skipped"
-      fi
-    else
-      printf '\n%s\n' "${block_content}" >> "${config_file}"
-      info "Added Host ${host_name} block to ${config_file}"
-    fi
-  }
-
-  #######################################
-  # Prompt for a value with an optional default.
-  # Globals:
-  #   REPLY — set to the user's answer or the default.
-  # Arguments:
-  #   description — prompt text.
-  #   default     — default value (empty string for required fields).
-  #######################################
-  prompt_value() {
-    local description="$1"
-    local default="$2"
-    if [[ -n "${default}" ]]; then
-      ask "${description} [default: ${default}]: "
-      read -r REPLY
-      REPLY="${REPLY:-${default}}"
-    else
-      ask "${description}: "
-      read -r REPLY
-      while [[ -z "${REPLY}" ]]; do
-        warn "This field is required"
-        ask "${description}: "
-        read -r REPLY
-      done
-    fi
-  }
-
-  #######################################
-  # Print a configuration summary table.
-  # Arguments:
-  #   Alternating key-value pairs.
-  #######################################
-  print_summary() {
-    echo ""
-    echo "========================================="
-    echo "  Configuration Summary"
-    echo "========================================="
-    while (( $# > 0 )); do
-      printf '  %-20s : %s\n' "$1" "$2"
-      shift 2
-    done
-    echo "========================================="
-    echo ""
-  }
-
-  #######################################
-  # Ask for confirmation; return 1 if not confirmed.
-  # Arguments:
-  #   message — optional prompt text.
-  #######################################
-  confirm_or_exit() {
-    ask "${1:-Confirm settings above?} [y/N] "
-    read -r answer
-    if [[ ! "${answer}" =~ ^[Yy]$ ]]; then
-      info "Cancelled"
-      return 1
-    fi
-  }
+if [[ ! -f "${COMMON_LIB}" ]]; then
+  echo "[ERROR] Cannot find lib/common.sh at ${COMMON_LIB}" >&2
+  echo "        Run this script from within the reverse-tunnel-manager directory." >&2
+  exit 1
 fi
+
+# shellcheck source=../lib/common.sh
+source "${COMMON_LIB}"
 
 main() {
   echo ""
@@ -259,27 +53,41 @@ main() {
   # -----------------------------------------------------------------
   # Interactive parameter collection
   # -----------------------------------------------------------------
-  prompt_value "Relay server IP or hostname" ""
+  local -r total_steps=8
+
+  prompt_step 1 "${total_steps}" "Relay host" \
+    "IP address or hostname of your relay server" ""
   local relay_host="${REPLY}"
 
-  prompt_value "Relay SSH port" "22"
+  prompt_step 2 "${total_steps}" "Relay SSH port" \
+    "Relay SSH port" "22"
   local relay_port="${REPLY}"
   validate_port "${relay_port}" "Relay SSH port" || return 1
 
-  prompt_value "Relay username" "${USER}"
+  prompt_step 3 "${total_steps}" "Relay username" \
+    "Relay username" "${USER}"
   local relay_user="${REPLY}"
 
-  prompt_value "Reverse tunnel port (set on remote machine)" ""
+  prompt_step 4 "${total_steps}" "Tunnel port" \
+    "Reverse tunnel port (set during remote setup)" ""
   local tunnel_port="${REPLY}"
   validate_port "${tunnel_port}" "Reverse tunnel port" || return 1
 
-  prompt_value "Remote machine username" "${USER}"
+  prompt_step 5 "${total_steps}" "Remote username" \
+    "Remote machine username" "${USER}"
   local remote_user="${REPLY}"
 
-  prompt_value "SSH private key path" "${HOME}/.ssh/id_rsa"
-  local ssh_key_path="${REPLY}"
+  echo ""
+  info "Step 6/${total_steps}: SSH key type"
+  prompt_key_type
 
-  prompt_value "SSH config Host alias" "my-remote"
+  prompt_step 7 "${total_steps}" "SSH key path" \
+    "SSH private key path" "${KEY_DEFAULT_PATH}"
+  local ssh_key_path
+  ssh_key_path=$(expand_tilde "${REPLY}")
+
+  prompt_step 8 "${total_steps}" "Connection alias" \
+    "SSH config Host alias (connect with: ssh <alias>)" "my-remote"
   local connection_name="${REPLY}"
 
   print_summary \
@@ -288,6 +96,7 @@ main() {
     "Relay User"      "${relay_user}" \
     "Tunnel Port"     "${tunnel_port}" \
     "Remote User"     "${remote_user}" \
+    "SSH Key Type"    "${KEY_TYPE}" \
     "SSH Key Path"    "${ssh_key_path}" \
     "Connection Name" "${connection_name}"
 
@@ -328,15 +137,12 @@ main() {
     info "SSH key — found at ${ssh_key_path}"
   else
     warn "SSH key not found at: ${ssh_key_path}"
-    ask "Generate a new RSA key at ${ssh_key_path}? [y/N] "
+    ask "Generate a new ${KEY_TYPE} key at ${ssh_key_path}? [y/N] "
     read -r gen_answer
     if [[ "${gen_answer}" =~ ^[Yy]$ ]]; then
       info "Leave the passphrase empty for automatic SSH connections."
-      ssh-keygen -t rsa -b 4096 -f "${ssh_key_path}" -C "${USER}@$(hostname)-client"
-      if [[ ! -f "${ssh_key_path}" ]]; then
-        error "Key generation failed."
-        return 1
-      fi
+      generate_ssh_key "${ssh_key_path}" "${KEY_TYPE}" "${KEY_BITS}" \
+        "${USER}@$(hostname)-client"
       info "New SSH key generated: ${ssh_key_path}"
     else
       error "An SSH key is required to connect to the relay. Exiting."
@@ -398,7 +204,7 @@ main() {
       "${connection_name}" "echo 'Connection OK'" 2>/dev/null; then
     echo ""
     echo "========================================="
-    echo "  Setup Complete — Connection Successful"
+    echo "  Setup Complete — All Done!"
     echo "========================================="
     printf '  %-20s : %s\n' "SSH alias"   "${connection_name}"
     printf '  %-20s : %s\n' "Relay"       "${relay_user}@${relay_host}:${relay_port}"
@@ -406,20 +212,22 @@ main() {
     printf '  %-20s : %s\n' "Remote user" "${remote_user}"
     echo "========================================="
     echo ""
-    info "Connect to the remote machine at any time with:"
+    info "Connect now:"
     echo "  ssh ${connection_name}"
     echo ""
   else
     echo ""
     warn "Connection test failed. SSH config was written successfully."
     echo ""
-    warn "Troubleshooting tips:"
-    echo "  1. Remote tunnel may not be running — start the tunnel service on the remote machine."
-    echo "  2. Relay may be unreachable — verify ${relay_host}:${relay_port} is accessible."
-    echo "  3. SSH key may not be configured — ensure your public key is in the relay's"
-    echo "     authorized_keys and also on the remote machine."
+    warn "If connection fails, common causes:"
+    echo "  1. Remote tunnel not running"
+    echo "     -> On remote: systemctl --user status ssh-tunnel.service"
+    echo "  2. Relay unreachable"
+    echo "     -> Verify: ssh ${relay_user}@${relay_host} -p ${relay_port}"
+    echo "  3. SSH key not authorized"
+    echo "     -> Check authorized_keys on relay and remote"
     echo ""
-    info "Run the following for verbose debug output:"
+    info "Verbose debug:"
     echo "  ssh -v ${connection_name}"
     echo ""
     info "Once the tunnel is active, connect with:"
