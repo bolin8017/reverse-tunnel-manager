@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Shell-based automation for setting up persistent SSH reverse tunnels via autossh and systemd. Enables SSH access to machines behind NAT/firewalls by bouncing through a relay server with a public IP.
+Shell-based automation for setting up persistent SSH reverse tunnels via autossh and systemd. Enables SSH access to machines behind NAT/firewalls by bouncing through a relay server with a public IP. Supports one-liner install (`curl -fsSL URL | bash` for Linux/macOS/WSL; `irm URL | iex` for Windows PowerShell) and a unified `setup.sh` / `setup.ps1` entry point with an interactive role selection menu.
 
 Three scripts in `scripts/`, each run on a different machine in order:
 1. `scripts/setup-relay.sh` — relay server (public IP): verifies/adjusts sshd_config
 2. `scripts/setup-remote.sh` — internal machine (no public IP): installs autossh, creates systemd user service
-3. `scripts/setup-client.sh` — user's laptop: writes SSH config with ProxyJump
+3. `scripts/setup-client.sh` — user's laptop (Linux/macOS/WSL): writes SSH config with ProxyJump
+4. `scripts/setup-client.ps1` — user's laptop (Windows PowerShell): writes SSH config with ProxyJump
 
 ## Architecture
 
@@ -29,9 +30,10 @@ remote (internal)  --autossh RemoteForward-->  relay (public IP)  <--ProxyJump--
 make check    # Syntax-check all scripts
 make lint     # Run shellcheck
 
+bash setup.sh                    # interactive role selection (Linux/macOS/WSL)
 bash scripts/setup-relay.sh      # on relay
 bash scripts/setup-remote.sh     # on remote
-bash scripts/setup-client.sh     # on client
+bash scripts/setup-client.sh     # on client (Linux/macOS/WSL)
 ```
 
 ## Style Guide
@@ -46,7 +48,7 @@ This project follows the [Google Shell Style Guide](https://google.github.io/sty
 - **Quoting**: prefer `"${var}"` with braces
 - **Validation**: use `validate_port()` for all user-supplied port values
 - **Templates**: `{{PLACEHOLDER}}` syntax replaced with `sed`
-- **SSH keys**: RSA-4096 for key generation
+- **SSH keys**: Ed25519 (default) or RSA-4096 for key generation
 
 ## Documentation
 

@@ -4,6 +4,24 @@ This guide walks through setting up a persistent SSH reverse tunnel from an
 internal machine to a relay server, and configuring a client to connect through
 it.
 
+## One-Liner Install (Recommended)
+
+**Linux / macOS / WSL:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.sh | bash
+```
+
+**Windows PowerShell:**
+
+```powershell
+irm https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.ps1 | iex
+```
+
+The installer downloads the repo and launches an interactive role selection menu.
+If you have already cloned the repo, run `bash setup.sh` (Linux/macOS/WSL) or
+`.\setup.ps1` (Windows PowerShell) directly.
+
 ## Prerequisites
 
 ### Remote machine
@@ -21,7 +39,7 @@ it.
 
 ### Client machine
 
-- Linux, macOS, or Windows (WSL recommended)
+- Linux, macOS, Windows 10+ (with built-in OpenSSH), or Windows (WSL)
 - SSH client (`ssh` command available)
 - SSH key pair (the script can generate one)
 - Network access to the relay server
@@ -81,7 +99,7 @@ bash scripts/setup-remote.sh
 2. **Installs autossh** — only if not already installed. This is the only step
    that requires `sudo`.
 3. **SSH key handling** — checks if the key exists. Offers to generate an
-   RSA-4096 key if missing.
+   Ed25519 (default) or RSA-4096 key if missing.
 4. **Verifies relay access** — tests SSH authentication to the relay. If it
    fails, offers to run `ssh-copy-id` automatically.
 5. **SSH config** — writes a `relay-tunnel` Host block to `~/.ssh/config`
@@ -98,7 +116,11 @@ bash scripts/setup-remote.sh
 Run on your **client** machine (laptop, workstation).
 
 ```bash
-bash scripts/setup-client.sh
+bash scripts/setup-client.sh          # Linux / macOS / WSL
+```
+
+```powershell
+.\scripts\setup-client.ps1            # Windows PowerShell
 ```
 
 ### Parameters
@@ -115,13 +137,13 @@ bash scripts/setup-client.sh
 
 ### What it does
 
-1. **Platform check** — detects the OS. On Windows (Git Bash), warns and
-   recommends WSL.
+1. **Platform check** — detects the OS. Runs natively on Linux, macOS, and
+   Windows PowerShell (`setup-client.ps1`).
 2. **Verifies current state** — checks if the SSH config block already exists
    and is correct. If everything is configured, skips directly to the
    connection test.
 3. **SSH key handling** — checks if the key exists. Offers to generate an
-   RSA-4096 key if missing.
+   Ed25519 (default) or RSA-4096 key if missing.
 4. **Verifies relay access** — tests SSH authentication. If it fails, offers to
    run `ssh-copy-id` automatically.
 5. **SSH config** — writes a Host block using `ProxyJump` for seamless
@@ -151,43 +173,10 @@ of assignments to avoid conflicts:
 The scripts do not enforce uniqueness. If two machines bind the same port, the
 second one fails with `remote port forwarding failed`.
 
-## Curl Installation (No Git)
+## Installation Without Git
 
-If `git` is not available, download individual scripts with `curl`:
-
-### Relay
-
-```bash
-mkdir -p reverse-tunnel-manager/{scripts,lib}
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/scripts/setup-relay.sh \
-     -o reverse-tunnel-manager/scripts/setup-relay.sh
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/lib/common.sh \
-     -o reverse-tunnel-manager/lib/common.sh
-cd reverse-tunnel-manager && bash scripts/setup-relay.sh
-```
-
-### Remote
-
-```bash
-mkdir -p reverse-tunnel-manager/{scripts,lib,templates}
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/scripts/setup-remote.sh \
-     -o reverse-tunnel-manager/scripts/setup-remote.sh
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/lib/common.sh \
-     -o reverse-tunnel-manager/lib/common.sh
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/templates/ssh-tunnel.service.template \
-     -o reverse-tunnel-manager/templates/ssh-tunnel.service.template
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/templates/ssh-config-relay.template \
-     -o reverse-tunnel-manager/templates/ssh-config-relay.template
-cd reverse-tunnel-manager && bash scripts/setup-remote.sh
-```
-
-### Client
-
-```bash
-mkdir -p reverse-tunnel-manager/{scripts,lib}
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/scripts/setup-client.sh \
-     -o reverse-tunnel-manager/scripts/setup-client.sh
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/lib/common.sh \
-     -o reverse-tunnel-manager/lib/common.sh
-cd reverse-tunnel-manager && bash scripts/setup-client.sh
-```
+If `git` is not available, the one-liner installer handles this automatically —
+it downloads and extracts the repo using `curl` (Linux/macOS/WSL) or
+`Invoke-WebRequest` (Windows PowerShell) without requiring `git`. See the
+[One-Liner Install](#one-liner-install-recommended) section at the top of this
+guide.

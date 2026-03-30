@@ -57,9 +57,37 @@ changes for components that are not already correctly configured.
 
 ### `scripts/setup-client.sh`
 
-Configures the client machine. Writes SSH config with `ProxyJump`, manages
-SSH keys, and tests the connection. Includes full inline fallback of
-`lib/common.sh` for standalone use.
+Configures the client machine on Linux, macOS, or WSL. Writes SSH config with
+`ProxyJump`, manages SSH keys, and tests the connection. Includes full inline
+fallback of `lib/common.sh` for standalone use.
+
+### `scripts/setup-client.ps1`
+
+Windows PowerShell equivalent of `setup-client.sh`. Writes SSH config with
+`ProxyJump`, manages SSH keys, and tests the connection. Supports the same
+interactive parameters as the Bash version.
+
+### `setup.sh` / `setup.ps1`
+
+Unified entry points that present an interactive role selection menu
+(relay / remote / client) with an architecture diagram, then delegate to the
+appropriate role script. `setup.sh` targets Linux/macOS/WSL; `setup.ps1`
+targets Windows PowerShell.
+
+### `install.sh` / `install.ps1`
+
+One-liner bootstrap scripts. `install.sh` uses `curl` + `tar` (or `git clone`)
+to download the repo and launch `setup.sh`. `install.ps1` uses
+`Invoke-WebRequest` to download and extract the repo, then launches `setup.ps1`.
+Designed to be piped directly from the internet:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.sh | bash
+```
+
+```powershell
+irm https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.ps1 | iex
+```
 
 ### `templates/`
 
@@ -88,7 +116,7 @@ Worst-case reconnection time after a network interruption: ~100 seconds
 - The reverse tunnel binds to `127.0.0.1` on the relay (not `0.0.0.0`).
   Only connections originating from or proxied through the relay can reach the
   remote machine.
-- SSH key authentication is required. The scripts generate RSA-4096 keys
-  and offer to copy them via `ssh-copy-id`.
+- SSH key authentication is required. The scripts generate Ed25519 (default)
+  or RSA-4096 keys and offer to copy them via `ssh-copy-id`.
 - `ExitOnForwardFailure yes` ensures `autossh` exits cleanly if the tunnel
   port is already in use, allowing systemd to retry.
