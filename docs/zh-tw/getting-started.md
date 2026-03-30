@@ -3,6 +3,23 @@
 本指南說明如何從內部主機建立持久的 SSH 反向隧道到中繼伺服器，並設定客戶端透過隧道
 連線。
 
+## 一鍵安裝（推薦）
+
+**Linux / macOS / WSL：**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.sh | bash
+```
+
+**Windows PowerShell：**
+
+```powershell
+irm https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.ps1 | iex
+```
+
+安裝程式會下載程式庫並啟動互動式角色選擇選單。若已 clone 程式庫，可直接執行
+`bash setup.sh`（Linux/macOS/WSL）或 `.\setup.ps1`（Windows PowerShell）。
+
 ## 前置需求
 
 ### Remote 主機（內部主機）
@@ -20,7 +37,7 @@
 
 ### Client 主機（客戶端）
 
-- Linux、macOS 或 Windows（建議使用 WSL）
+- Linux、macOS、Windows 10+（內建 OpenSSH）或 Windows（WSL）
 - SSH 客戶端（`ssh` 指令可用）
 - SSH 金鑰對（腳本可自動生成）
 - 可連線到 relay 伺服器
@@ -73,7 +90,7 @@ bash scripts/setup-remote.sh
 1. **驗證目前狀態** — 檢查 `autossh`、SSH 金鑰、SSH 設定和 systemd 服務是否已正確
    設定。如果全部正確，報告成功並結束。
 2. **安裝 autossh** — 僅在尚未安裝時執行。這是唯一需要 `sudo` 的步驟。
-3. **SSH 金鑰處理** — 檢查金鑰是否存在。如果缺少，提供生成 RSA-4096 金鑰的選項。
+3. **SSH 金鑰處理** — 檢查金鑰是否存在。如果缺少，提供生成 Ed25519（預設）或 RSA-4096 金鑰的選項。
 4. **驗證 relay 存取** — 測試到 relay 的 SSH 認證。如果失敗，提供自動執行
    `ssh-copy-id` 的選項。
 5. **SSH 設定** — 使用 `templates/ssh-config-relay.template` 模板，在
@@ -90,7 +107,11 @@ bash scripts/setup-remote.sh
 在 **client** 主機（筆電、工作站）上執行。
 
 ```bash
-bash scripts/setup-client.sh
+bash scripts/setup-client.sh          # Linux / macOS / WSL
+```
+
+```powershell
+.\scripts\setup-client.ps1            # Windows PowerShell
 ```
 
 ### 參數
@@ -107,10 +128,11 @@ bash scripts/setup-client.sh
 
 ### 腳本會做的事
 
-1. **平台檢查** — 偵測作業系統。在 Windows（Git Bash）上會警告並建議使用 WSL。
+1. **平台檢查** — 偵測作業系統。原生支援 Linux、macOS 及 Windows PowerShell
+   （`setup-client.ps1`）。
 2. **驗證目前狀態** — 檢查 SSH 設定區塊是否已存在且正確。如果一切已設定完成，
    直接跳到連線測試。
-3. **SSH 金鑰處理** — 檢查金鑰是否存在。如果缺少，提供生成 RSA-4096 金鑰的選項。
+3. **SSH 金鑰處理** — 檢查金鑰是否存在。如果缺少，提供生成 Ed25519（預設）或 RSA-4096 金鑰的選項。
 4. **驗證 relay 存取** — 測試 SSH 認證。如果失敗，提供自動執行 `ssh-copy-id` 的選項。
 5. **SSH 設定** — 使用 `ProxyJump` 寫入 Host 區塊，實現無縫多跳 SSH
    （僅在區塊需要建立或更新時執行）。
@@ -137,43 +159,8 @@ ssh my-remote
 腳本不會強制唯一性。如果兩台主機綁定相同的埠，第二台會出現
 `remote port forwarding failed` 錯誤。
 
-## Curl 安裝（不使用 Git）
+## 不使用 Git 安裝
 
-如果沒有 `git`，可以用 `curl` 下載個別腳本：
-
-### Relay
-
-```bash
-mkdir -p reverse-tunnel-manager/{scripts,lib}
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/scripts/setup-relay.sh \
-     -o reverse-tunnel-manager/scripts/setup-relay.sh
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/lib/common.sh \
-     -o reverse-tunnel-manager/lib/common.sh
-cd reverse-tunnel-manager && bash scripts/setup-relay.sh
-```
-
-### Remote
-
-```bash
-mkdir -p reverse-tunnel-manager/{scripts,lib,templates}
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/scripts/setup-remote.sh \
-     -o reverse-tunnel-manager/scripts/setup-remote.sh
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/lib/common.sh \
-     -o reverse-tunnel-manager/lib/common.sh
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/templates/ssh-tunnel.service.template \
-     -o reverse-tunnel-manager/templates/ssh-tunnel.service.template
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/templates/ssh-config-relay.template \
-     -o reverse-tunnel-manager/templates/ssh-config-relay.template
-cd reverse-tunnel-manager && bash scripts/setup-remote.sh
-```
-
-### Client
-
-```bash
-mkdir -p reverse-tunnel-manager/{scripts,lib}
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/scripts/setup-client.sh \
-     -o reverse-tunnel-manager/scripts/setup-client.sh
-curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/lib/common.sh \
-     -o reverse-tunnel-manager/lib/common.sh
-cd reverse-tunnel-manager && bash scripts/setup-client.sh
-```
+若沒有 `git`，一鍵安裝程式可自動處理——在 Linux/macOS/WSL 上使用 `curl`，在
+Windows PowerShell 上使用 `Invoke-WebRequest` 下載並解壓縮程式庫，無需 `git`。
+請參閱本指南頂部的[一鍵安裝](#一鍵安裝推薦)章節。
