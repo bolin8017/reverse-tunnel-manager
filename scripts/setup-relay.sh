@@ -27,6 +27,55 @@ else
   ask()   { printf '%b[?]%b %s' "${BLUE}" "${NC}" "$*"; }
 fi
 
+#######################################
+# Display relay completion message with next-step guidance.
+# Reads relay connection info interactively for the "next steps" display.
+#######################################
+show_relay_completion() {
+  echo ""
+  echo "========================================="
+  echo "  Relay Setup Complete"
+  echo "========================================="
+  printf '  %-24s : %s\n' "Config file"         "${SSHD_CONFIG}"
+  printf '  %-24s : %s\n' "ClientAliveInterval"  "30"
+  printf '  %-24s : %s\n' "ClientAliveCountMax"  "3"
+  printf '  %-24s : %s\n' "AllowTcpForwarding"   "yes"
+  echo "========================================="
+  echo ""
+  info "Relay server is ready."
+  echo ""
+
+  info "To set up the next machine, provide your relay connection info:"
+  echo ""
+
+  ask "Relay hostname or IP (how other machines reach this server): "
+  read -r relay_display_host
+  while [[ -z "${relay_display_host}" ]]; do
+    warn "This field is required"
+    ask "Relay hostname or IP: "
+    read -r relay_display_host
+  done
+
+  ask "Relay SSH port [22]: "
+  read -r relay_display_port
+  relay_display_port="${relay_display_port:-22}"
+
+  ask "Username for tunnel connections [${USER}]: "
+  read -r relay_display_user
+  relay_display_user="${relay_display_user:-${USER}}"
+
+  echo ""
+  echo "  Next: run the installer on your Remote (internal machine)"
+  echo "  ---------------------------------------------------------"
+  echo "    curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.sh | bash"
+  echo ""
+  echo "  You will need these values for remote setup:"
+  printf '    %-14s : %s\n' "Relay Host" "${relay_display_host}"
+  printf '    %-14s : %s\n' "Relay Port" "${relay_display_port}"
+  printf '    %-14s : %s\n' "Relay User" "${relay_display_user}"
+  echo ""
+}
+
 readonly SSHD_CONFIG="/etc/ssh/sshd_config"
 
 #######################################
@@ -133,17 +182,7 @@ main() {
   # All settings correct — done
   # -------------------------------------------------------------------
   if [[ "${needs_change}" == "false" ]]; then
-    echo ""
-    echo "========================================="
-    echo "  Relay Setup Complete"
-    echo "========================================="
-    printf '  %-24s : %s\n' "Config file"          "${SSHD_CONFIG}"
-    printf '  %-24s : %s\n' "ClientAliveInterval"   "30"
-    printf '  %-24s : %s\n' "ClientAliveCountMax"   "3"
-    printf '  %-24s : %s\n' "AllowTcpForwarding"    "yes"
-    echo "========================================="
-    echo ""
-    info "All settings are correct. Relay server is ready."
+    show_relay_completion
     return 0
   fi
 
@@ -217,18 +256,7 @@ main() {
   # -------------------------------------------------------------------
   # Completion summary
   # -------------------------------------------------------------------
-  echo ""
-  echo "========================================="
-  echo "  Relay Setup Complete"
-  echo "========================================="
-  printf '  %-24s : %s\n' "Config file"          "${SSHD_CONFIG}"
-  printf '  %-24s : %s\n' "Backup"               "${backup_file}"
-  printf '  %-24s : %s\n' "ClientAliveInterval"   "30"
-  printf '  %-24s : %s\n' "ClientAliveCountMax"   "3"
-  printf '  %-24s : %s\n' "AllowTcpForwarding"    "yes"
-  echo "========================================="
-  echo ""
-  info "sshd reloaded successfully. Relay server is ready."
+  show_relay_completion
 }
 
 main "$@"
