@@ -284,7 +284,7 @@ WantedBy=default.target"
     if [[ "${gen_answer}" =~ ^[Yy]$ ]]; then
       info "Leave the passphrase empty so autossh can connect without prompting."
       generate_ssh_key "${ssh_key_path}" "${KEY_TYPE}" "${KEY_BITS}" \
-        "${USER}@$(hostname)-tunnel"
+        "${USER}@$(hostname)-tunnel" || return 1
       info "New SSH key generated: ${ssh_key_path}"
     else
       error "An SSH key is required for the reverse tunnel. Exiting."

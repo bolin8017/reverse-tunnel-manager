@@ -142,7 +142,7 @@ main() {
     if [[ "${gen_answer}" =~ ^[Yy]$ ]]; then
       info "Leave the passphrase empty for automatic SSH connections."
       generate_ssh_key "${ssh_key_path}" "${KEY_TYPE}" "${KEY_BITS}" \
-        "${USER}@$(hostname)-client"
+        "${USER}@$(hostname)-client" || return 1
       info "New SSH key generated: ${ssh_key_path}"
     else
       error "An SSH key is required to connect to the relay. Exiting."

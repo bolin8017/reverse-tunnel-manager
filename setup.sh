@@ -20,7 +20,8 @@ ask()   { printf '%b[?]%b %s' "${BLUE}" "${NC}" "$*"; }
 
 #######################################
 # Display the welcome screen with architecture diagram and role menu.
-# Returns the user's choice in the global ROLE_CHOICE.
+# Outputs:
+#   Prints menu to stdout, prompts for input.
 #######################################
 show_menu() {
   echo ""
@@ -31,9 +32,9 @@ show_menu() {
   echo "  Architecture:"
   echo ""
   echo "    ┌──────────┐         ┌──────────┐         ┌──────────┐"
-  echo "    │  Remote   │ ──SSH──>│  Relay   │<──SSH── │  Client  │"
-  echo "    │ internal  │ tunnel  │  public  │ProxyJump│  laptop  │"
-  echo "    │ no pub IP │         │  has IP  │         │          │"
+  echo "    │  Remote  │ ──SSH──>│  Relay   │<──SSH── │  Client  │"
+  echo "    │ internal │ tunnel  │  public  │ProxyJump│  laptop  │"
+  echo "    │no pub IP │         │  has IP  │         │          │"
   echo "    └──────────┘         └──────────┘         └──────────┘"
   echo ""
   echo "  Which role should this machine play?"
