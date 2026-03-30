@@ -210,7 +210,7 @@ function Main {
     return
   }
 
-  $totalSteps = 8
+  $totalSteps = 7
 
   # ── Parameter collection ──
   $relayHost = Read-PromptStep 1 $totalSteps 'Relay host' `
@@ -230,29 +230,62 @@ function Main {
   $remoteUser = Read-PromptStep 5 $totalSteps 'Remote username' `
     'Remote machine username' $env:USERNAME
 
-  # Key type selection
+  # SSH key selection — detect existing keys
   Write-Host ''
-  Write-Info "Step 6/$($totalSteps): SSH key type"
-  Write-Host '  [1] Ed25519 (recommended, modern & fast)'
-  Write-Host '  [2] RSA-4096 (maximum compatibility)'
-  Write-Ask 'Choose [1/2, default: 1]: '
-  $keyChoice = Read-Host
-  if ($keyChoice -eq '2') {
-    $keyType = 'rsa'
-    $keyBits = '4096'
-    $defaultKeyPath = Join-Path (Join-Path $env:USERPROFILE '.ssh') 'id_rsa'
+  Write-Info "Step 6/$($totalSteps): SSH key"
+  $sshDir = Join-Path $env:USERPROFILE '.ssh'
+  $optLabels = @()
+  $optPaths = @()
+  $optTypes = @()
+  $optBits = @()
+  $optExists = @()
+
+  $ed25519Path = Join-Path $sshDir 'id_ed25519'
+  $rsaPath = Join-Path $sshDir 'id_rsa'
+
+  if (Test-Path $ed25519Path) {
+    $optLabels += "Use $ed25519Path (Ed25519)"
+    $optPaths += $ed25519Path; $optTypes += 'ed25519'; $optBits += ''; $optExists += $true
+  }
+  if (Test-Path $rsaPath) {
+    $optLabels += "Use $rsaPath (RSA)"
+    $optPaths += $rsaPath; $optTypes += 'rsa'; $optBits += '4096'; $optExists += $true
+  }
+
+  $existingCount = $optLabels.Count
+  if ($existingCount -gt 0) {
+    Write-Host '  Found existing keys:'
+    for ($i = 0; $i -lt $existingCount; $i++) {
+      Write-Host ("    [{0}] {1}" -f ($i + 1), $optLabels[$i])
+    }
+    Write-Host '  Generate new:'
   }
   else {
-    $keyType = 'ed25519'
-    $keyBits = ''
-    $defaultKeyPath = Join-Path (Join-Path $env:USERPROFILE '.ssh') 'id_ed25519'
+    Write-Host "  No existing keys found in $sshDir/"
   }
 
-  $sshKeyPath = Read-PromptStep 7 $totalSteps 'SSH key path' `
-    'SSH private key path' $defaultKeyPath
-  $sshKeyPath = Expand-TildePath $sshKeyPath
+  $optLabels += 'Generate new Ed25519 key (recommended)'
+  $optPaths += $ed25519Path; $optTypes += 'ed25519'; $optBits += ''; $optExists += $false
+  $optLabels += 'Generate new RSA-4096 key'
+  $optPaths += $rsaPath; $optTypes += 'rsa'; $optBits += '4096'; $optExists += $false
 
-  $connectionName = Read-PromptStep 8 $totalSteps 'Connection alias' `
+  for ($i = $existingCount; $i -lt $optLabels.Count; $i++) {
+    Write-Host ("    [{0}] {1}" -f ($i + 1), $optLabels[$i])
+  }
+
+  $maxOpt = $optLabels.Count
+  Write-Ask "Choose [1-$maxOpt, default: 1]: "
+  $keyChoice = Read-Host
+  if (-not $keyChoice) { $keyChoice = '1' }
+  $keyIdx = [int]$keyChoice - 1
+  if ($keyIdx -lt 0 -or $keyIdx -ge $maxOpt) { $keyIdx = 0 }
+
+  $sshKeyPath = $optPaths[$keyIdx]
+  $keyType = $optTypes[$keyIdx]
+  $keyBits = $optBits[$keyIdx]
+  $sshKeyExists = $optExists[$keyIdx]
+
+  $connectionName = Read-PromptStep 7 $totalSteps 'Connection alias' `
     'SSH config Host alias (connect with: ssh <alias>)' 'my-remote'
 
   # ── Summary ──
@@ -262,8 +295,7 @@ function Main {
     @{Key='Relay User';      Value=$relayUser},
     @{Key='Tunnel Port';     Value=$tunnelPort},
     @{Key='Remote User';     Value=$remoteUser},
-    @{Key='SSH Key Type';    Value=$keyType},
-    @{Key='SSH Key Path';    Value=$sshKeyPath},
+    @{Key='SSH Key';         Value="$sshKeyPath ($keyType)"},
     @{Key='Connection Name'; Value=$connectionName}
   )
 
@@ -306,28 +338,20 @@ Host $connectionName
   }
 
   # ── SSH key handling ──
-  if (Test-Path $sshKeyPath) {
-    Write-Info "SSH key — found at $sshKeyPath"
+  if ($sshKeyExists) {
+    Write-Info "SSH key — using $sshKeyPath"
   }
   else {
-    Write-Warn "SSH key not found at: $sshKeyPath"
-    Write-Ask "Generate a new $keyType key at ${sshKeyPath}? [y/N] "
-    $genAnswer = Read-Host
-    if ($genAnswer -match '^[Yy]$') {
-      Write-Info 'Leave the passphrase empty for automatic SSH connections.'
-      $keygenArgs = @('-t', $keyType, '-f', $sshKeyPath, '-C', "$env:USERNAME@$env:COMPUTERNAME-client")
-      if ($keyBits) { $keygenArgs += @('-b', $keyBits) }
-      & ssh-keygen @keygenArgs
-      if (-not (Test-Path $sshKeyPath)) {
-        Write-Err 'Key generation failed.'
-        return
-      }
-      Write-Info "New SSH key generated: $sshKeyPath"
-    }
-    else {
-      Write-Err 'An SSH key is required to connect to the relay. Exiting.'
+    Write-Info "Generating $keyType key at $sshKeyPath..."
+    Write-Info 'Leave the passphrase empty for automatic SSH connections.'
+    $keygenArgs = @('-t', $keyType, '-f', $sshKeyPath, '-C', "$env:USERNAME@$env:COMPUTERNAME-client")
+    if ($keyBits) { $keygenArgs += @('-b', $keyBits) }
+    & ssh-keygen @keygenArgs
+    if (-not (Test-Path $sshKeyPath)) {
+      Write-Err 'Key generation failed.'
       return
     }
+    Write-Info "New SSH key generated: $sshKeyPath"
   }
 
   # ── Verify relay access ──

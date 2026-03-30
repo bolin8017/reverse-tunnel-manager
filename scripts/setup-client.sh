@@ -53,7 +53,7 @@ main() {
   # -----------------------------------------------------------------
   # Interactive parameter collection
   # -----------------------------------------------------------------
-  local -r total_steps=8
+  local -r total_steps=7
 
   prompt_step 1 "${total_steps}" "Relay host" \
     "IP address or hostname of your relay server" ""
@@ -78,15 +78,11 @@ main() {
   local remote_user="${REPLY}"
 
   echo ""
-  info "Step 6/${total_steps}: SSH key type"
-  prompt_key_type
+  info "Step 6/${total_steps}: SSH key"
+  prompt_ssh_key
+  local ssh_key_path="${SSH_KEY_PATH}"
 
-  prompt_step 7 "${total_steps}" "SSH key path" \
-    "SSH private key path" "${KEY_DEFAULT_PATH}"
-  local ssh_key_path
-  ssh_key_path=$(expand_tilde "${REPLY}")
-
-  prompt_step 8 "${total_steps}" "Connection alias" \
+  prompt_step 7 "${total_steps}" "Connection alias" \
     "SSH config Host alias (connect with: ssh <alias>)" "my-remote"
   local connection_name="${REPLY}"
 
@@ -96,8 +92,7 @@ main() {
     "Relay User"      "${relay_user}" \
     "Tunnel Port"     "${tunnel_port}" \
     "Remote User"     "${remote_user}" \
-    "SSH Key Type"    "${KEY_TYPE}" \
-    "SSH Key Path"    "${ssh_key_path}" \
+    "SSH Key"         "${ssh_key_path} (${KEY_TYPE})" \
     "Connection Name" "${connection_name}"
 
   confirm_or_exit "Proceed with these settings?"
@@ -133,21 +128,14 @@ main() {
   # -----------------------------------------------------------------
   # SSH key handling
   # -----------------------------------------------------------------
-  if [[ -f "${ssh_key_path}" ]]; then
-    info "SSH key — found at ${ssh_key_path}"
+  if [[ "${SSH_KEY_EXISTS}" == "true" ]]; then
+    info "SSH key — using ${ssh_key_path}"
   else
-    warn "SSH key not found at: ${ssh_key_path}"
-    ask "Generate a new ${KEY_TYPE} key at ${ssh_key_path}? [y/N] "
-    read -r gen_answer
-    if [[ "${gen_answer}" =~ ^[Yy]$ ]]; then
-      info "Leave the passphrase empty for automatic SSH connections."
-      generate_ssh_key "${ssh_key_path}" "${KEY_TYPE}" "${KEY_BITS}" \
-        "${USER}@$(hostname)-client" || return 1
-      info "New SSH key generated: ${ssh_key_path}"
-    else
-      error "An SSH key is required to connect to the relay. Exiting."
-      return 1
-    fi
+    info "Generating ${KEY_TYPE} key at ${ssh_key_path}..."
+    info "Leave the passphrase empty for automatic SSH connections."
+    generate_ssh_key "${ssh_key_path}" "${KEY_TYPE}" "${KEY_BITS}" \
+      "${USER}@$(hostname)-client" || return 1
+    info "New SSH key generated: ${ssh_key_path}"
   fi
 
   # -----------------------------------------------------------------

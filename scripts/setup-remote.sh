@@ -32,7 +32,7 @@ main() {
   # -----------------------------------------------------------------
   # Interactive parameter collection
   # -----------------------------------------------------------------
-  local -r total_steps=7
+  local -r total_steps=6
 
   prompt_step 1 "${total_steps}" "Relay host" \
     "IP address or hostname of your relay server" ""
@@ -58,13 +58,9 @@ main() {
   validate_port "${local_ssh_port}" "Local SSH port" || return 1
 
   echo ""
-  info "Step 6/${total_steps}: SSH key type"
-  prompt_key_type
-
-  prompt_step 7 "${total_steps}" "SSH key path" \
-    "SSH private key path" "${KEY_DEFAULT_PATH}"
-  local ssh_key_path
-  ssh_key_path=$(expand_tilde "${REPLY}")
+  info "Step 6/${total_steps}: SSH key"
+  prompt_ssh_key
+  local ssh_key_path="${SSH_KEY_PATH}"
 
   local -r ssh_host_alias="relay-tunnel"
 
@@ -74,7 +70,7 @@ main() {
     "Relay User"     "${relay_user}" \
     "Tunnel Port"    "${tunnel_port}" \
     "Local SSH Port" "${local_ssh_port}" \
-    "SSH Key Path"   "${ssh_key_path}" \
+    "SSH Key"        "${ssh_key_path} (${KEY_TYPE})" \
     "SSH Host Alias" "${ssh_host_alias}"
 
   confirm_or_exit "Proceed with these settings?"
@@ -123,7 +119,6 @@ main() {
   echo ""
 
   local needs_autossh=false
-  local needs_key=false
   local needs_ssh_config=false
   local needs_service=false
 
@@ -137,11 +132,12 @@ main() {
     needs_autossh=true
   fi
 
-  # Check SSH key
-  if [[ -f "${ssh_key_path}" ]]; then
+  # Check SSH key (prompt_ssh_key already detected existence)
+  local needs_key=false
+  if [[ "${SSH_KEY_EXISTS}" == "true" ]]; then
     info "SSH key — found at ${ssh_key_path}"
   else
-    warn "SSH key — not found at ${ssh_key_path}"
+    warn "SSH key — will be generated at ${ssh_key_path}"
     needs_key=true
   fi
 
@@ -279,17 +275,11 @@ WantedBy=default.target"
   # SSH key handling (only if needed)
   # -----------------------------------------------------------------
   if [[ "${needs_key}" == "true" ]]; then
-    ask "Generate a new ${KEY_TYPE} key at ${ssh_key_path}? [y/N] "
-    read -r gen_answer
-    if [[ "${gen_answer}" =~ ^[Yy]$ ]]; then
-      info "Leave the passphrase empty so autossh can connect without prompting."
-      generate_ssh_key "${ssh_key_path}" "${KEY_TYPE}" "${KEY_BITS}" \
-        "${USER}@$(hostname)-tunnel" || return 1
-      info "New SSH key generated: ${ssh_key_path}"
-    else
-      error "An SSH key is required for the reverse tunnel. Exiting."
-      return 1
-    fi
+    info "Generating ${KEY_TYPE} key at ${ssh_key_path}..."
+    info "Leave the passphrase empty so autossh can connect without prompting."
+    generate_ssh_key "${ssh_key_path}" "${KEY_TYPE}" "${KEY_BITS}" \
+      "${USER}@$(hostname)-tunnel" || return 1
+    info "New SSH key generated: ${ssh_key_path}"
   fi
 
   # Show public key for confirmation.

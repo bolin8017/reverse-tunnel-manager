@@ -336,31 +336,78 @@ prompt_step() {
 }
 
 #######################################
-# Prompt for SSH key type and set key-related globals.
+# Detect existing SSH keys and prompt user to choose one or generate new.
+# Scans ~/.ssh/ for id_ed25519 and id_rsa, presents a menu with found
+# keys and generate-new options.
 # Globals:
-#   KEY_TYPE         — set to "ed25519" or "rsa".
-#   KEY_BITS         — set to "" (ed25519) or "4096" (rsa).
-#   KEY_DEFAULT_PATH — set to default key path for chosen type.
+#   SSH_KEY_PATH   — set to the selected or to-be-generated key path.
+#   KEY_TYPE       — set to "ed25519" or "rsa".
+#   KEY_BITS       — set to "" (ed25519) or "4096" (rsa).
+#   SSH_KEY_EXISTS — set to "true" if selected key already exists.
 #######################################
 # shellcheck disable=SC2034
-prompt_key_type() {
-  echo "  [1] Ed25519 (recommended, modern & fast)"
-  echo "  [2] RSA-4096 (maximum compatibility)"
-  ask "Choose [1/2, default: 1]: "
-  read -r key_choice
-  key_choice="${key_choice:-1}"
-  case "${key_choice}" in
-    2)
-      KEY_TYPE="rsa"
-      KEY_BITS="4096"
-      KEY_DEFAULT_PATH="${HOME}/.ssh/id_rsa"
-      ;;
-    *)
-      KEY_TYPE="ed25519"
-      KEY_BITS=""
-      KEY_DEFAULT_PATH="${HOME}/.ssh/id_ed25519"
-      ;;
-  esac
+prompt_ssh_key() {
+  local ssh_dir="${HOME}/.ssh"
+  local -a opt_labels=()
+  local -a opt_paths=()
+  local -a opt_types=()
+  local -a opt_bits=()
+  local -a opt_exists=()
+
+  # Detect existing keys
+  if [[ -f "${ssh_dir}/id_ed25519" ]]; then
+    opt_labels+=("Use ${ssh_dir}/id_ed25519 (Ed25519)")
+    opt_paths+=("${ssh_dir}/id_ed25519")
+    opt_types+=("ed25519"); opt_bits+=(""); opt_exists+=("true")
+  fi
+  if [[ -f "${ssh_dir}/id_rsa" ]]; then
+    opt_labels+=("Use ${ssh_dir}/id_rsa (RSA)")
+    opt_paths+=("${ssh_dir}/id_rsa")
+    opt_types+=("rsa"); opt_bits+=("4096"); opt_exists+=("true")
+  fi
+
+  # Show "found" header if any exist
+  if (( ${#opt_exists[@]} > 0 )); then
+    echo "  Found existing keys:"
+    for i in "${!opt_labels[@]}"; do
+      printf '    [%d] %s\n' "$((i + 1))" "${opt_labels[$i]}"
+    done
+    echo "  Generate new:"
+  else
+    echo "  No existing keys found in ${ssh_dir}/"
+  fi
+
+  # Generate-new options
+  local gen_start=$(( ${#opt_labels[@]} + 1 ))
+  opt_labels+=("Generate new Ed25519 key (recommended)")
+  opt_paths+=("${ssh_dir}/id_ed25519")
+  opt_types+=("ed25519"); opt_bits+=(""); opt_exists+=("false")
+
+  opt_labels+=("Generate new RSA-4096 key")
+  opt_paths+=("${ssh_dir}/id_rsa")
+  opt_types+=("rsa"); opt_bits+=("4096"); opt_exists+=("false")
+
+  local total=${#opt_labels[@]}
+  for (( i = gen_start - 1; i < total; i++ )); do
+    printf '    [%d] %s\n' "$((i + 1))" "${opt_labels[$i]}"
+  done
+
+  local max="${total}"
+  ask "Choose [1-${max}, default: 1]: "
+  read -r ssh_key_choice
+  ssh_key_choice="${ssh_key_choice:-1}"
+
+  # Validate choice
+  if ! [[ "${ssh_key_choice}" =~ ^[0-9]+$ ]] \
+      || (( ssh_key_choice < 1 || ssh_key_choice > max )); then
+    ssh_key_choice=1
+  fi
+
+  local idx=$(( ssh_key_choice - 1 ))
+  SSH_KEY_PATH="${opt_paths[$idx]}"
+  KEY_TYPE="${opt_types[$idx]}"
+  KEY_BITS="${opt_bits[$idx]}"
+  SSH_KEY_EXISTS="${opt_exists[$idx]}"
 }
 
 #######################################
