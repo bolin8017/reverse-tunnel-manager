@@ -276,6 +276,18 @@ ensure_ssh_dir() {
 }
 
 #######################################
+# Expand leading ~ to $HOME in a path string.
+# Arguments:
+#   path — the path to expand.
+# Outputs:
+#   Writes the expanded path to stdout.
+#######################################
+expand_tilde() {
+  local path="$1"
+  printf '%s' "${path/#\~/$HOME}"
+}
+
+#######################################
 # Prompt for a value with an optional default.
 # Globals:
 #   REPLY — set to the user's answer or the default.
@@ -299,6 +311,158 @@ prompt_value() {
       read -r REPLY
     done
   fi
+}
+
+#######################################
+# Display a step header and prompt for a value.
+# Arguments:
+#   step        — current step number.
+#   total       — total number of steps.
+#   title       — step title.
+#   description — prompt text passed to prompt_value.
+#   default     — default value (empty for required).
+# Globals:
+#   REPLY — set to the user's answer or the default.
+#######################################
+prompt_step() {
+  local step="$1"
+  local total="$2"
+  local title="$3"
+  local description="$4"
+  local default="$5"
+  echo ""
+  info "Step ${step}/${total}: ${title}"
+  prompt_value "${description}" "${default}"
+}
+
+#######################################
+# Detect existing SSH keys and prompt user to choose one or generate new.
+# Scans ~/.ssh/ for id_ed25519 and id_rsa, presents a menu with found
+# keys and generate-new options.
+# Globals:
+#   SSH_KEY_PATH   — set to the selected or to-be-generated key path.
+#   KEY_TYPE       — set to "ed25519" or "rsa".
+#   KEY_BITS       — set to "" (ed25519) or "4096" (rsa).
+#   SSH_KEY_EXISTS — set to "true" if selected key already exists.
+#######################################
+# shellcheck disable=SC2034
+prompt_ssh_key() {
+  local ssh_dir="${HOME}/.ssh"
+  local -a opt_labels=()
+  local -a opt_paths=()
+  local -a opt_types=()
+  local -a opt_bits=()
+  local -a opt_exists=()
+
+  # Detect existing keys
+  if [[ -f "${ssh_dir}/id_ed25519" ]]; then
+    opt_labels+=("Use ${ssh_dir}/id_ed25519 (Ed25519)")
+    opt_paths+=("${ssh_dir}/id_ed25519")
+    opt_types+=("ed25519"); opt_bits+=(""); opt_exists+=("true")
+  fi
+  if [[ -f "${ssh_dir}/id_rsa" ]]; then
+    opt_labels+=("Use ${ssh_dir}/id_rsa (RSA)")
+    opt_paths+=("${ssh_dir}/id_rsa")
+    opt_types+=("rsa"); opt_bits+=("4096"); opt_exists+=("true")
+  fi
+
+  # Show "found" header if any exist
+  if (( ${#opt_exists[@]} > 0 )); then
+    echo "  Found existing keys:"
+    for i in "${!opt_labels[@]}"; do
+      printf '    [%d] %s\n' "$((i + 1))" "${opt_labels[$i]}"
+    done
+    echo "  Generate new:"
+  else
+    echo "  No existing keys found in ${ssh_dir}/"
+  fi
+
+  # Generate-new options
+  local gen_start=$(( ${#opt_labels[@]} + 1 ))
+  opt_labels+=("Generate new Ed25519 key (recommended)")
+  opt_paths+=("${ssh_dir}/id_ed25519")
+  opt_types+=("ed25519"); opt_bits+=(""); opt_exists+=("false")
+
+  opt_labels+=("Generate new RSA-4096 key")
+  opt_paths+=("${ssh_dir}/id_rsa")
+  opt_types+=("rsa"); opt_bits+=("4096"); opt_exists+=("false")
+
+  local total=${#opt_labels[@]}
+  for (( i = gen_start - 1; i < total; i++ )); do
+    printf '    [%d] %s\n' "$((i + 1))" "${opt_labels[$i]}"
+  done
+
+  local max="${total}"
+  ask "Choose [1-${max}, default: 1]: "
+  read -r ssh_key_choice
+  ssh_key_choice="${ssh_key_choice:-1}"
+
+  # Validate choice
+  if ! [[ "${ssh_key_choice}" =~ ^[0-9]+$ ]] \
+      || (( ssh_key_choice < 1 || ssh_key_choice > max )); then
+    ssh_key_choice=1
+  fi
+
+  local idx=$(( ssh_key_choice - 1 ))
+  SSH_KEY_PATH="${opt_paths[$idx]}"
+  KEY_TYPE="${opt_types[$idx]}"
+  KEY_BITS="${opt_bits[$idx]}"
+  SSH_KEY_EXISTS="${opt_exists[$idx]}"
+}
+
+#######################################
+# Generate an SSH key pair.
+# Arguments:
+#   key_path — path for the private key file.
+#   key_type — "ed25519" or "rsa".
+#   key_bits — bit size (only used for rsa, e.g., "4096"). Empty for ed25519.
+#   comment  — key comment string.
+# Returns:
+#   1 if generation failed.
+#######################################
+generate_ssh_key() {
+  local key_path="$1"
+  local key_type="$2"
+  local key_bits="$3"
+  local comment="$4"
+  local -a keygen_args=(-t "${key_type}" -f "${key_path}" -C "${comment}")
+  if [[ -n "${key_bits}" ]]; then
+    keygen_args+=(-b "${key_bits}")
+  fi
+  ssh-keygen "${keygen_args[@]}"
+  if [[ ! -f "${key_path}" ]]; then
+    error "Key generation failed."
+    return 1
+  fi
+}
+
+#######################################
+# Check if a TCP port is available on the relay server via SSH.
+# Arguments:
+#   relay_user  — SSH username for relay.
+#   relay_host  — relay hostname or IP.
+#   relay_port  — relay SSH port.
+#   tunnel_port — the port to check availability of.
+#   ssh_key     — path to SSH private key.
+# Returns:
+#   0 if available, 1 if in use, 2 if SSH check failed.
+#######################################
+check_port_on_relay() {
+  local relay_user="$1"
+  local relay_host="$2"
+  local relay_port="$3"
+  local tunnel_port="$4"
+  local ssh_key="$5"
+  local result
+  result=$(ssh -o ConnectTimeout=5 -o BatchMode=yes \
+    -p "${relay_port}" -i "${ssh_key}" \
+    "${relay_user}@${relay_host}" \
+    "ss -tln 2>/dev/null | grep -q ':${tunnel_port} ' && echo IN_USE || echo AVAILABLE" \
+    2>/dev/null) || return 2
+  if [[ "${result}" == "IN_USE" ]]; then
+    return 1
+  fi
+  return 0
 }
 
 #######################################

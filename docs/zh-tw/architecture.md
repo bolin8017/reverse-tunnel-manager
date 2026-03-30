@@ -31,8 +31,8 @@ Reverse Tunnel Manager 使用 SSH 反向埠轉發，讓位於 NAT 或防火牆�
 
 ### `lib/common.sh`
 
-設定腳本共用的函式庫。`setup-remote.sh` 必須依賴此檔案；`setup-relay.sh`
-和 `setup-client.sh` 包含內嵌備援函式，可獨立執行。提供：
+設定腳本共用的函式庫。`setup-remote.sh` 和 `setup-client.sh` 必須依賴此檔案；
+`setup-relay.sh` 包含內嵌備援函式，可獨立執行。提供：
 
 - 彩色輸出函式（`info`、`warn`、`error`、`ask`）
 - 作業系統偵測（`detect_os`）— 設定 `PLATFORM`、`OS_FAMILY`、`PKG_MGR`
@@ -53,8 +53,33 @@ Reverse Tunnel Manager 使用 SSH 反向埠轉發，讓位於 NAT 或防火牆�
 
 ### `scripts/setup-client.sh`
 
-設定客戶端主機。使用 `ProxyJump` 寫入 SSH 設定、管理 SSH 金鑰，並測試連線。包含
-完整的 `lib/common.sh` 內嵌備援，可獨立執行。
+設定 Linux、macOS 或 WSL 客戶端主機。使用 `ProxyJump` 寫入 SSH 設定、管理 SSH
+金鑰，並測試連線。需要 `lib/common.sh`。
+
+### `scripts/setup-client.ps1`
+
+`setup-client.sh` 的 Windows PowerShell 版本。使用 `ProxyJump` 寫入 SSH 設定、
+管理 SSH 金鑰，並測試連線。支援與 Bash 版本相同的互動式參數。
+
+### `setup.sh` / `setup.ps1`
+
+統一入口點，顯示互動式角色選擇選單（relay / remote / client）及架構示意圖，
+再委派給對應的角色腳本。`setup.sh` 適用於 Linux/macOS/WSL；`setup.ps1` 適用於
+Windows PowerShell。
+
+### `install.sh` / `install.ps1`
+
+一鍵安裝引導腳本。`install.sh` 使用 `curl` + `tar`（或 `git clone`）下載程式庫
+並啟動 `setup.sh`。`install.ps1` 使用 `Invoke-WebRequest` 下載並解壓縮程式庫，
+再啟動 `setup.ps1`。設計為可直接從網路管線執行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.sh | bash
+```
+
+```powershell
+irm https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.ps1 | iex
+```
 
 ### `templates/`
 
@@ -80,7 +105,7 @@ Reverse Tunnel Manager 使用 SSH 反向埠轉發，讓位於 NAT 或防火牆�
 
 - 反向隧道綁定在 relay 的 `127.0.0.1`（非 `0.0.0.0`）。只有來自或經由 relay
   代理的連線才能到達 remote 主機。
-- 需要 SSH 金鑰認證。腳本生成 RSA-4096 金鑰，並提供透過 `ssh-copy-id` 複製
-  的選項。
+- 需要 SSH 金鑰認證。腳本生成 Ed25519（預設）或 RSA-4096 金鑰，並提供透過
+  `ssh-copy-id` 複製的選項。
 - `ExitOnForwardFailure yes` 確保 `autossh` 在隧道埠被佔用時正常退出，
   讓 systemd 進行重試。

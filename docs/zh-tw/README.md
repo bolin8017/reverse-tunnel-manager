@@ -22,18 +22,39 @@ remote（內部主機）──autossh RemoteForward──>  relay（公開 IP）
 
 ## 支援平台
 
-| 角色       | Linux (RHEL/Rocky/CentOS/Fedora/Alma) | Linux (Ubuntu/Debian) | macOS | Windows |
-|------------|:--------------------------------------:|:---------------------:|:-----:|:-------:|
+| 角色       | Linux (RHEL/Rocky/CentOS/Fedora/Alma) | Linux (Ubuntu/Debian) | macOS | Windows (PowerShell) |
+|------------|:--------------------------------------:|:---------------------:|:-----:|:--------------------:|
 | **remote** | 支援 | 支援 | - | - |
 | **relay**  | 支援 | 支援 | - | - |
-| **client** | 支援 | 支援 | 支援 | 建議使用 WSL |
+| **client** | 支援 | 支援 | 支援 | 支援 |
 
 ## 快速開始
 
+**Linux / macOS / WSL — 一鍵安裝：**
+
 ```bash
-git clone https://github.com/bolin8017/reverse-tunnel-manager.git
-cd reverse-tunnel-manager
+curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.sh | bash
 ```
+
+**Windows PowerShell — 一鍵安裝：**
+
+```powershell
+irm https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.ps1 | iex
+```
+
+安裝程式會下載程式庫並啟動互動式角色選擇選單。
+
+**若已 clone 程式庫：**
+
+```bash
+bash setup.sh        # Linux / macOS / WSL
+```
+
+```powershell
+.\setup.ps1          # Windows PowerShell
+```
+
+**或直接執行個別腳本：**
 
 **步驟 1** — 在 relay 伺服器上：
 
@@ -50,7 +71,11 @@ bash scripts/setup-remote.sh
 **步驟 3** — 在 client（筆電）上：
 
 ```bash
-bash scripts/setup-client.sh
+bash scripts/setup-client.sh          # Linux / macOS / WSL
+```
+
+```powershell
+.\scripts\setup-client.ps1            # Windows PowerShell
 ```
 
 設定完成後，隨時連線到 remote 主機：
