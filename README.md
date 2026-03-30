@@ -23,18 +23,39 @@ remote (internal)  ──autossh RemoteForward──>  relay (public IP)  <─�
 
 ## Supported Platforms
 
-| Role       | Linux (RHEL/Rocky/CentOS/Fedora/Alma) | Linux (Ubuntu/Debian) | macOS | Windows |
-|------------|:--------------------------------------:|:---------------------:|:-----:|:-------:|
+| Role       | Linux (RHEL/Rocky/CentOS/Fedora/Alma) | Linux (Ubuntu/Debian) | macOS | Windows (PowerShell) |
+|------------|:--------------------------------------:|:---------------------:|:-----:|:--------------------:|
 | **remote** | Yes | Yes | - | - |
 | **relay**  | Yes | Yes | - | - |
-| **client** | Yes | Yes | Yes | WSL recommended |
+| **client** | Yes | Yes | Yes | Yes |
 
 ## Quick Start
 
+**Linux / macOS / WSL — one-liner install:**
+
 ```bash
-git clone https://github.com/bolin8017/reverse-tunnel-manager.git
-cd reverse-tunnel-manager
+curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.sh | bash
 ```
+
+**Windows PowerShell — one-liner install:**
+
+```powershell
+irm https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.ps1 | iex
+```
+
+The installer downloads the repo and launches an interactive role selection menu.
+
+**If you already cloned the repo:**
+
+```bash
+bash setup.sh        # Linux / macOS / WSL
+```
+
+```powershell
+.\setup.ps1          # Windows PowerShell
+```
+
+**Or run individual scripts directly:**
 
 **Step 1** — On the relay server:
 
@@ -51,7 +72,11 @@ bash scripts/setup-remote.sh
 **Step 3** — On your client (laptop):
 
 ```bash
-bash scripts/setup-client.sh
+bash scripts/setup-client.sh          # Linux / macOS / WSL
+```
+
+```powershell
+.\scripts\setup-client.ps1            # Windows PowerShell
 ```
 
 After setup, connect to the remote machine with:
