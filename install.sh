@@ -56,8 +56,8 @@ main() {
   info "Download complete."
   echo ""
 
-  # ── Run setup ──
-  exec bash "${tmp_dir}/${REPO_NAME}/setup.sh" < /dev/tty
+  # ── Run setup (not exec — allow EXIT trap to clean up tmp_dir) ──
+  bash "${tmp_dir}/${REPO_NAME}/setup.sh" < /dev/tty
 }
 
 main "$@"

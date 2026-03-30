@@ -31,8 +31,8 @@ Reverse Tunnel Manager 使用 SSH 反向埠轉發，讓位於 NAT 或防火牆�
 
 ### `lib/common.sh`
 
-設定腳本共用的函式庫。`setup-remote.sh` 必須依賴此檔案；`setup-relay.sh`
-和 `setup-client.sh` 包含內嵌備援函式，可獨立執行。提供：
+設定腳本共用的函式庫。`setup-remote.sh` 和 `setup-client.sh` 必須依賴此檔案；
+`setup-relay.sh` 包含內嵌備援函式，可獨立執行。提供：
 
 - 彩色輸出函式（`info`、`warn`、`error`、`ask`）
 - 作業系統偵測（`detect_os`）— 設定 `PLATFORM`、`OS_FAMILY`、`PKG_MGR`
@@ -54,7 +54,7 @@ Reverse Tunnel Manager 使用 SSH 反向埠轉發，讓位於 NAT 或防火牆�
 ### `scripts/setup-client.sh`
 
 設定 Linux、macOS 或 WSL 客戶端主機。使用 `ProxyJump` 寫入 SSH 設定、管理 SSH
-金鑰，並測試連線。包含完整的 `lib/common.sh` 內嵌備援，可獨立執行。
+金鑰，並測試連線。需要 `lib/common.sh`。
 
 ### `scripts/setup-client.ps1`
 

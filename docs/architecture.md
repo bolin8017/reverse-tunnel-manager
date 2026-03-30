@@ -33,9 +33,9 @@ client.
 
 ### `lib/common.sh`
 
-Shared function library sourced by setup scripts. `setup-remote.sh` requires it;
-`setup-relay.sh` and `setup-client.sh` include inline fallbacks for standalone
-use. Provides:
+Shared function library sourced by setup scripts. `setup-remote.sh` and
+`setup-client.sh` require it; `setup-relay.sh` includes an inline fallback for
+standalone use. Provides:
 
 - Colored output helpers (`info`, `warn`, `error`, `ask`)
 - OS detection (`detect_os`) — sets `PLATFORM`, `OS_FAMILY`, `PKG_MGR`
@@ -58,8 +58,8 @@ changes for components that are not already correctly configured.
 ### `scripts/setup-client.sh`
 
 Configures the client machine on Linux, macOS, or WSL. Writes SSH config with
-`ProxyJump`, manages SSH keys, and tests the connection. Includes full inline
-fallback of `lib/common.sh` for standalone use.
+`ProxyJump`, manages SSH keys, and tests the connection. Requires
+`lib/common.sh`.
 
 ### `scripts/setup-client.ps1`
 
