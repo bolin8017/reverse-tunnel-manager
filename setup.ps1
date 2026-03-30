@@ -37,7 +37,7 @@ function Main {
     return
   }
 
-  $clientScript = Join-Path $ScriptDir 'scripts' 'setup-client.ps1'
+  $clientScript = Join-Path (Join-Path $ScriptDir 'scripts') 'setup-client.ps1'
   if (-not (Test-Path $clientScript)) {
     Write-Host "[ERROR] Cannot find $clientScript" -ForegroundColor Red
     return

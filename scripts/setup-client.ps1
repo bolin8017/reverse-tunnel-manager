@@ -80,7 +80,7 @@ function Show-Summary {
 # ── SSH config helpers ─────────────────────────────────────────────
 
 function Get-SshConfigPath {
-  return (Join-Path $env:USERPROFILE '.ssh' 'config')
+  return (Join-Path (Join-Path $env:USERPROFILE '.ssh') 'config')
 }
 
 function Ensure-SshDirectory {
@@ -240,12 +240,12 @@ function Main {
   if ($keyChoice -eq '2') {
     $keyType = 'rsa'
     $keyBits = '4096'
-    $defaultKeyPath = Join-Path $env:USERPROFILE '.ssh' 'id_rsa'
+    $defaultKeyPath = Join-Path (Join-Path $env:USERPROFILE '.ssh') 'id_rsa'
   }
   else {
     $keyType = 'ed25519'
     $keyBits = ''
-    $defaultKeyPath = Join-Path $env:USERPROFILE '.ssh' 'id_ed25519'
+    $defaultKeyPath = Join-Path (Join-Path $env:USERPROFILE '.ssh') 'id_ed25519'
   }
 
   $sshKeyPath = Read-PromptStep 7 $totalSteps 'SSH key path' `

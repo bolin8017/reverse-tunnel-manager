@@ -44,7 +44,7 @@ function Main {
       Rename-Item (Join-Path $tmpDir "$RepoName-main") (Join-Path $tmpDir $RepoName)
     }
 
-    $setupScript = Join-Path $tmpDir $RepoName 'setup.ps1'
+    $setupScript = Join-Path (Join-Path $tmpDir $RepoName) 'setup.ps1'
     if (-not (Test-Path $setupScript)) {
       Write-Err 'Download failed — setup.ps1 not found.'
       return
