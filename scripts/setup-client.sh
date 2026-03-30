@@ -80,6 +80,7 @@ main() {
   echo ""
   info "Step 6/${total_steps}: SSH key"
   prompt_ssh_key
+  # shellcheck disable=SC2153  # SSH_KEY_PATH set by prompt_ssh_key
   local ssh_key_path="${SSH_KEY_PATH}"
 
   prompt_step 7 "${total_steps}" "Connection alias" \
