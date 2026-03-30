@@ -32,26 +32,39 @@ main() {
   # -----------------------------------------------------------------
   # Interactive parameter collection
   # -----------------------------------------------------------------
-  prompt_value "Relay server IP or hostname" ""
+  local -r total_steps=7
+
+  prompt_step 1 "${total_steps}" "Relay host" \
+    "IP address or hostname of your relay server" ""
   local relay_host="${REPLY}"
 
-  prompt_value "Relay SSH port" "22"
+  prompt_step 2 "${total_steps}" "Relay SSH port" \
+    "Relay SSH port" "22"
   local relay_port="${REPLY}"
   validate_port "${relay_port}" "Relay SSH port" || return 1
 
-  prompt_value "Relay username" "${USER}"
+  prompt_step 3 "${total_steps}" "Relay username" \
+    "Relay username" "${USER}"
   local relay_user="${REPLY}"
 
-  prompt_value "Reverse tunnel port (must be unique per user)" ""
+  prompt_step 4 "${total_steps}" "Tunnel port" \
+    "Reverse tunnel port on relay (must be unique per machine)" ""
   local tunnel_port="${REPLY}"
   validate_port "${tunnel_port}" "Reverse tunnel port" || return 1
 
-  prompt_value "Local SSH port" "22"
+  prompt_step 5 "${total_steps}" "Local SSH port" \
+    "Local SSH port on this machine" "22"
   local local_ssh_port="${REPLY}"
   validate_port "${local_ssh_port}" "Local SSH port" || return 1
 
-  prompt_value "SSH private key path" "${HOME}/.ssh/id_rsa"
-  local ssh_key_path="${REPLY}"
+  echo ""
+  info "Step 6/${total_steps}: SSH key type"
+  prompt_key_type
+
+  prompt_step 7 "${total_steps}" "SSH key path" \
+    "SSH private key path" "${KEY_DEFAULT_PATH}"
+  local ssh_key_path
+  ssh_key_path=$(expand_tilde "${REPLY}")
 
   local -r ssh_host_alias="relay-tunnel"
 
@@ -65,6 +78,43 @@ main() {
     "SSH Host Alias" "${ssh_host_alias}"
 
   confirm_or_exit "Proceed with these settings?"
+
+  # -----------------------------------------------------------------
+  # Port conflict check on relay
+  # -----------------------------------------------------------------
+  info "Checking if port ${tunnel_port} is available on relay..."
+  local port_check_result=0
+  check_port_on_relay "${relay_user}" "${relay_host}" "${relay_port}" \
+    "${tunnel_port}" "${ssh_key_path}" || port_check_result=$?
+
+  case "${port_check_result}" in
+    0)
+      info "Port ${tunnel_port} is available on relay."
+      ;;
+    1)
+      while [[ "${port_check_result}" -eq 1 ]]; do
+        warn "Port ${tunnel_port} is already in use on relay."
+        ask "Enter a different port (or 's' to skip check): "
+        read -r new_port
+        if [[ "${new_port}" == "s" ]]; then
+          warn "Skipping port check. Ensure port ${tunnel_port} is free on the relay."
+          break
+        fi
+        validate_port "${new_port}" "Tunnel port" || continue
+        tunnel_port="${new_port}"
+        port_check_result=0
+        check_port_on_relay "${relay_user}" "${relay_host}" "${relay_port}" \
+          "${tunnel_port}" "${ssh_key_path}" || port_check_result=$?
+        if [[ "${port_check_result}" -eq 0 ]]; then
+          info "Port ${tunnel_port} is available on relay."
+        fi
+      done
+      ;;
+    2)
+      warn "Could not verify port on relay (SSH connection failed)."
+      warn "Skipping check — ensure port ${tunnel_port} is free on the relay."
+      ;;
+  esac
 
   # -----------------------------------------------------------------
   # Verify current state
@@ -229,15 +279,12 @@ WantedBy=default.target"
   # SSH key handling (only if needed)
   # -----------------------------------------------------------------
   if [[ "${needs_key}" == "true" ]]; then
-    ask "Generate a new RSA key at ${ssh_key_path}? [y/N] "
+    ask "Generate a new ${KEY_TYPE} key at ${ssh_key_path}? [y/N] "
     read -r gen_answer
     if [[ "${gen_answer}" =~ ^[Yy]$ ]]; then
       info "Leave the passphrase empty so autossh can connect without prompting."
-      ssh-keygen -t rsa -b 4096 -f "${ssh_key_path}" -C "${USER}@$(hostname)-tunnel"
-      if [[ ! -f "${ssh_key_path}" ]]; then
-        error "Key generation failed."
-        return 1
-      fi
+      generate_ssh_key "${ssh_key_path}" "${KEY_TYPE}" "${KEY_BITS}" \
+        "${USER}@$(hostname)-tunnel"
       info "New SSH key generated: ${ssh_key_path}"
     else
       error "An SSH key is required for the reverse tunnel. Exiting."
@@ -411,7 +458,7 @@ WantedBy=default.target"
   if systemctl --user is-active --quiet ssh-tunnel.service; then
     echo ""
     echo "========================================="
-    echo "  Setup Complete — Tunnel is Active"
+    echo "  Remote Setup Complete — Tunnel Active"
     echo "========================================="
     printf '  %-22s : %s\n' "Relay"          "${relay_user}@${relay_host}:${relay_port}"
     printf '  %-22s : %s\n' "Tunnel Port"    "${tunnel_port} (on relay)"
@@ -419,14 +466,19 @@ WantedBy=default.target"
     printf '  %-22s : %s\n' "SSH Alias"      "${ssh_host_alias}"
     echo "========================================="
     echo ""
-    info "Common commands:"
-    echo "  Status  : systemctl --user status ssh-tunnel.service"
-    echo "  Logs    : journalctl --user -u ssh-tunnel.service -f"
-    echo "  Restart : systemctl --user restart ssh-tunnel.service"
-    echo "  Stop    : systemctl --user stop ssh-tunnel.service"
+    info "Verify tunnel status:"
+    echo "  systemctl --user status ssh-tunnel.service"
     echo ""
-    info "To connect back to this machine from the relay:"
-    echo "  ssh -p ${tunnel_port} localhost   # run on the relay server"
+    echo "  Next: run the installer on your Client (laptop)"
+    echo "  ------------------------------------------------"
+    echo "    curl -fsSL https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.sh | bash"
+    echo "    irm https://raw.githubusercontent.com/bolin8017/reverse-tunnel-manager/main/install.ps1 | iex  # Windows"
+    echo ""
+    echo "  You will need these values for client setup:"
+    printf '    %-14s : %s\n' "Relay Host"  "${relay_host}"
+    printf '    %-14s : %s\n' "Relay Port"  "${relay_port}"
+    printf '    %-14s : %s\n' "Relay User"  "${relay_user}"
+    printf '    %-14s : %s\n' "Tunnel Port" "${tunnel_port}"
     echo ""
   else
     error "ssh-tunnel.service is NOT active after setup."
