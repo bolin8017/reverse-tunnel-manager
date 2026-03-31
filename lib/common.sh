@@ -194,22 +194,24 @@ remove_ssh_host_block() {
   local host_name="$2"
   local tmp_file
   tmp_file=$(mktemp)
-  trap 'rm -f "${tmp_file}"' RETURN
 
-  awk -v host="${host_name}" '
+  if ! awk -v host="${host_name}" '
     /^Host / {
       if ($2 == host) { skip=1; next } else { skip=0 }
     }
     /^[^ \t]/ && !/^Host / { skip=0 }
     !skip { print }
-  ' "${config_file}" > "${tmp_file}"
+  ' "${config_file}" > "${tmp_file}"; then
+    rm -f "${tmp_file}"
+    return 1
+  fi
 
   # Remove trailing blank lines (portable: command substitution strips them).
   local content
   content=$(cat "${tmp_file}")
   printf '%s\n' "${content}" > "${tmp_file}"
 
-  mv "${tmp_file}" "${config_file}"
+  mv "${tmp_file}" "${config_file}" || { rm -f "${tmp_file}"; return 1; }
 }
 
 #######################################
