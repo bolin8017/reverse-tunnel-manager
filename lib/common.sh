@@ -188,6 +188,8 @@ extract_ssh_host_block() {
 # Arguments:
 #   config_file — path to SSH config file.
 #   host_name   — the Host block name to remove.
+# Returns:
+#   0 if successful, 1 on failure.
 #######################################
 remove_ssh_host_block() {
   local config_file="$1"
@@ -248,7 +250,6 @@ upsert_ssh_host_block() {
     if [[ "${answer}" =~ ^[Yy]$ ]]; then
       cp "${config_file}" "${config_file}.bak.$(date +%Y%m%d%H%M%S)"
       if ! remove_ssh_host_block "${config_file}" "${host_name}"; then
-        error "Failed to remove old Host ${host_name} block"
         return 1
       fi
       printf '\n%s\n' "${block_content}" >> "${config_file}"
