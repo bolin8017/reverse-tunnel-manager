@@ -115,10 +115,15 @@ set_sshd_option() {
       }
       { print }
     ' "${SSHD_CONFIG}" | tee "${tmp_sshd}" > /dev/null; then
+      error "Failed to process sshd_config for: ${keyword}"
       rm -f "${tmp_sshd}"
       return 1
     fi
-    sudo cp "${tmp_sshd}" "${SSHD_CONFIG}" || { rm -f "${tmp_sshd}"; return 1; }
+    if ! sudo cp "${tmp_sshd}" "${SSHD_CONFIG}"; then
+      error "Failed to write sshd_config for: ${keyword}"
+      rm -f "${tmp_sshd}"
+      return 1
+    fi
     rm -f "${tmp_sshd}"
     info "Updated ${keyword} to '${value}'"
   else
