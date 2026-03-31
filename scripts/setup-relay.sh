@@ -109,14 +109,22 @@ set_sshd_option() {
       "${SSHD_CONFIG}"; then
     local tmp_sshd
     tmp_sshd=$(mktemp)
-    trap 'rm -f "${tmp_sshd}"' RETURN
-    sudo awk -v kw="${keyword}" -v val="${value}" '
+    if ! sudo awk -v kw="${keyword}" -v val="${value}" '
       !done && /^[[:space:]]*#?[[:space:]]*/ && tolower($0) ~ tolower(kw) {
         print kw " " val; done=1; next
       }
       { print }
-    ' "${SSHD_CONFIG}" | tee "${tmp_sshd}" > /dev/null \
-      && sudo cp "${tmp_sshd}" "${SSHD_CONFIG}"
+    ' "${SSHD_CONFIG}" | tee "${tmp_sshd}" > /dev/null; then
+      error "Failed to process sshd_config for: ${keyword}"
+      rm -f "${tmp_sshd}"
+      return 1
+    fi
+    if ! sudo cp "${tmp_sshd}" "${SSHD_CONFIG}"; then
+      error "Failed to write sshd_config for: ${keyword}"
+      rm -f "${tmp_sshd}"
+      return 1
+    fi
+    rm -f "${tmp_sshd}"
     info "Updated ${keyword} to '${value}'"
   else
     echo "${keyword} ${value}" | sudo tee -a "${SSHD_CONFIG}" > /dev/null

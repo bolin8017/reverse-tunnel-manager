@@ -188,28 +188,33 @@ extract_ssh_host_block() {
 # Arguments:
 #   config_file — path to SSH config file.
 #   host_name   — the Host block name to remove.
+# Returns:
+#   0 if successful, 1 on failure.
 #######################################
 remove_ssh_host_block() {
   local config_file="$1"
   local host_name="$2"
   local tmp_file
   tmp_file=$(mktemp)
-  trap 'rm -f "${tmp_file}"' RETURN
 
-  awk -v host="${host_name}" '
+  if ! awk -v host="${host_name}" '
     /^Host / {
       if ($2 == host) { skip=1; next } else { skip=0 }
     }
     /^[^ \t]/ && !/^Host / { skip=0 }
     !skip { print }
-  ' "${config_file}" > "${tmp_file}"
+  ' "${config_file}" > "${tmp_file}"; then
+    error "Failed to process SSH config: ${config_file}"
+    rm -f "${tmp_file}"
+    return 1
+  fi
 
   # Remove trailing blank lines (portable: command substitution strips them).
   local content
-  content=$(cat "${tmp_file}")
-  printf '%s\n' "${content}" > "${tmp_file}"
+  content=$(cat "${tmp_file}") || { error "Failed to read temp file"; rm -f "${tmp_file}"; return 1; }
+  printf '%s\n' "${content}" > "${tmp_file}" || { error "Failed to write temp file"; rm -f "${tmp_file}"; return 1; }
 
-  mv "${tmp_file}" "${config_file}"
+  mv "${tmp_file}" "${config_file}" || { error "Failed to replace SSH config: ${config_file}"; rm -f "${tmp_file}"; return 1; }
 }
 
 #######################################
@@ -244,7 +249,9 @@ upsert_ssh_host_block() {
     read -r answer
     if [[ "${answer}" =~ ^[Yy]$ ]]; then
       cp "${config_file}" "${config_file}.bak.$(date +%Y%m%d%H%M%S)"
-      remove_ssh_host_block "${config_file}" "${host_name}"
+      if ! remove_ssh_host_block "${config_file}" "${host_name}"; then
+        return 1
+      fi
       printf '\n%s\n' "${block_content}" >> "${config_file}"
       info "Updated Host ${host_name} block"
     else
