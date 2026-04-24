@@ -81,7 +81,7 @@ ssh -v my-remote
 
 ```bash
 # On the relay
-sudo sshd -T | grep -E 'allowtcpforwarding|clientalive'
+sudo sshd -T | grep -E 'allowtcpforwarding|clientalive|pubkeyauthentication'
 ```
 
 ## Uninstall

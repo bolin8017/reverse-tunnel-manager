@@ -52,13 +52,14 @@ bash scripts/setup-relay.sh
 
 **腳本會做的事：**
 
-1. 讀取 `/etc/ssh/sshd_config` 並驗證三項設定：
+1. 讀取 `/etc/ssh/sshd_config` 並驗證四項設定：
 
-   | 選項                  | 值    | 用途 |
-   |-----------------------|-------|------|
-   | `ClientAliveInterval` | `30`  | 每 30 秒發送 keepalive |
-   | `ClientAliveCountMax` | `3`   | 3 次未回應後斷開連線（約 90 秒） |
-   | `AllowTcpForwarding`  | `yes` | 允許 `RemoteForward` 運作 |
+   | 選項                   | 值    | 用途 |
+   |------------------------|-------|------|
+   | `ClientAliveInterval`  | `30`  | 每 30 秒發送 keepalive |
+   | `ClientAliveCountMax`  | `3`   | 3 次未回應後斷開連線（約 90 秒） |
+   | `AllowTcpForwarding`   | `yes` | 允許 `RemoteForward` 運作 |
+   | `PubkeyAuthentication` | `yes` | Tunnel 需使用公鑰認證 |
 
 2. 如果所有設定正確，直接報告成功，不需要 `sudo`。
 3. 如果需要修改，要求 `sudo` 來修改、驗證並重新載入 `sshd`。

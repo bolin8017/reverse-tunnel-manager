@@ -55,13 +55,14 @@ bash scripts/setup-relay.sh
 
 **What it does:**
 
-1. Reads `/etc/ssh/sshd_config` and verifies three settings:
+1. Reads `/etc/ssh/sshd_config` and verifies four settings:
 
-   | Option                | Value | Purpose |
-   |-----------------------|-------|---------|
-   | `ClientAliveInterval` | `30`  | Send keepalive every 30 seconds |
-   | `ClientAliveCountMax` | `3`   | Drop connection after 3 missed keepalives (~90 s) |
-   | `AllowTcpForwarding`  | `yes` | Required for `RemoteForward` to work |
+   | Option                 | Value | Purpose |
+   |------------------------|-------|---------|
+   | `ClientAliveInterval`  | `30`  | Send keepalive every 30 seconds |
+   | `ClientAliveCountMax`  | `3`   | Drop connection after 3 missed keepalives (~90 s) |
+   | `AllowTcpForwarding`   | `yes` | Required for `RemoteForward` to work |
+   | `PubkeyAuthentication` | `yes` | Required for pubkey-based tunnel authentication |
 
 2. If all settings are correct, reports success without requiring `sudo`.
 3. If changes are needed, requests `sudo` to modify, validate, and reload `sshd`.
