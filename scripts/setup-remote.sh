@@ -109,7 +109,8 @@ main() {
       ;;
     2)
       warn "Could not verify port on relay (SSH connection failed)."
-      warn "Skipping check — ensure port ${tunnel_port} is free on the relay."
+      warn "This is expected on first-time setup before the pubkey is installed."
+      warn "Skipping the port check; it will re-run successfully after the key is in place."
       ;;
   esac
 
@@ -215,6 +216,19 @@ WantedBy=default.target"
     needs_service=true
   fi
 
+  # Probe pubkey auth to the relay. Local state can look fine while the
+  # relay silently rotated or cleared authorized_keys — without this
+  # check the "all configured" early exit below would ship a broken
+  # tunnel behind a "Tunnel Active" banner.
+  local needs_pubkey_install=false
+  if [[ -f "${ssh_key_path}" ]] \
+      && verify_pubkey_auth "${relay_user}@${relay_host}" "${relay_port}" "${ssh_key_path}"; then
+    info "Pubkey auth to relay — OK"
+  else
+    warn "Pubkey auth to relay — not working"
+    needs_pubkey_install=true
+  fi
+
   echo ""
 
   # -----------------------------------------------------------------
@@ -223,7 +237,8 @@ WantedBy=default.target"
   if [[ "${needs_autossh}" == "false" \
       && "${needs_key}" == "false" \
       && "${needs_ssh_config}" == "false" \
-      && "${needs_service}" == "false" ]]; then
+      && "${needs_service}" == "false" \
+      && "${needs_pubkey_install}" == "false" ]]; then
     echo "========================================="
     echo "  All Configured — Tunnel is Active"
     echo "========================================="
