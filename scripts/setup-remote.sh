@@ -160,7 +160,7 @@ main() {
     HostName ${relay_host}
     Port ${relay_port}
     User ${relay_user}
-    IdentityFile ${ssh_key_path}
+    IdentityFile \"${ssh_key_path}\"
     ServerAliveInterval 30
     ServerAliveCountMax 3
     ExitOnForwardFailure yes
