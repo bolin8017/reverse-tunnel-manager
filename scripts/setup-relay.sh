@@ -36,10 +36,11 @@ show_relay_completion() {
   echo "========================================="
   echo "  Relay Setup Complete"
   echo "========================================="
-  printf '  %-24s : %s\n' "Config file"         "${SSHD_CONFIG}"
+  printf '  %-24s : %s\n' "Config file"          "${SSHD_CONFIG}"
   printf '  %-24s : %s\n' "ClientAliveInterval"  "30"
   printf '  %-24s : %s\n' "ClientAliveCountMax"  "3"
   printf '  %-24s : %s\n' "AllowTcpForwarding"   "yes"
+  printf '  %-24s : %s\n' "PubkeyAuthentication" "yes"
   echo "========================================="
   echo ""
   info "Relay server is ready."
@@ -170,7 +171,10 @@ main() {
 
   local keyword value
   if [[ -n "${config_content}" ]]; then
-    for pair in "ClientAliveInterval 30" "ClientAliveCountMax 3" "AllowTcpForwarding yes"; do
+    for pair in "ClientAliveInterval 30" \
+                "ClientAliveCountMax 3" \
+                "AllowTcpForwarding yes" \
+                "PubkeyAuthentication yes"; do
       keyword="${pair%% *}"
       value="${pair#* }"
       if echo "${config_content}" | grep -qE "^[[:space:]]*${keyword}[[:space:]]+${value}[[:space:]]*$"; then
@@ -183,7 +187,12 @@ main() {
     done
   else
     needs_change=true
-    missing_settings+=("ClientAliveInterval 30" "ClientAliveCountMax 3" "AllowTcpForwarding yes")
+    missing_settings+=( \
+      "ClientAliveInterval 30" \
+      "ClientAliveCountMax 3" \
+      "AllowTcpForwarding yes" \
+      "PubkeyAuthentication yes" \
+    )
   fi
 
   # -------------------------------------------------------------------
@@ -240,6 +249,7 @@ main() {
   set_sshd_option "ClientAliveInterval" "30"
   set_sshd_option "ClientAliveCountMax" "3"
   set_sshd_option "AllowTcpForwarding"  "yes"
+  set_sshd_option "PubkeyAuthentication" "yes"
 
   if [[ "${CHANGES_MADE}" == "false" ]]; then
     info "sshd_config already has all required settings — nothing to do."
