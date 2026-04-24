@@ -283,57 +283,43 @@ WantedBy=default.target"
     info "New SSH key generated: ${ssh_key_path}"
   fi
 
-  # Show public key for confirmation.
-  local pub_key=""
-  local pub_key_path="${ssh_key_path}.pub"
-  if [[ -f "${pub_key_path}" ]]; then
-    pub_key=$(cat "${pub_key_path}")
-  else
-    info ".pub file not found. Deriving public key from private key..."
-    pub_key=$(ssh-keygen -y -f "${ssh_key_path}" 2>/dev/null) || true
-    if [[ -z "${pub_key}" ]]; then
-      error "Could not derive public key from ${ssh_key_path}"
-      return 1
+  # Show the public key only when it was just generated — first-run
+  # context. On re-runs, ensure_pubkey_on_host's verify-first probe
+  # short-circuits silently and there's no need to echo the key.
+  if [[ "${needs_key}" == "true" ]]; then
+    local pub_key=""
+    local pub_key_path="${ssh_key_path}.pub"
+    if [[ -f "${pub_key_path}" ]]; then
+      pub_key=$(cat "${pub_key_path}")
+    else
+      info ".pub file not found. Deriving public key from private key..."
+      pub_key=$(ssh-keygen -y -f "${ssh_key_path}" 2>/dev/null) || true
+      if [[ -z "${pub_key}" ]]; then
+        error "Could not derive public key from ${ssh_key_path}"
+        return 1
+      fi
     fi
-  fi
 
-  # Check if key-based auth to relay already works.
-  echo ""
-  info "Verifying SSH access to relay (${relay_user}@${relay_host}:${relay_port})..."
-  if ssh -o ConnectTimeout=10 -o BatchMode=yes \
-      -p "${relay_port}" -i "${ssh_key_path}" \
-      "${relay_user}@${relay_host}" "true" 2>/dev/null; then
-    info "SSH access to relay — OK (key already authorized)"
-  else
-    warn "Cannot authenticate to relay with this key."
     echo ""
-    info "Your public key:"
+    info "Public key that will be installed on the relay:"
     echo "---"
     echo "${pub_key}"
     echo "---"
     echo ""
+  fi
 
-    ask "Automatically copy key to relay with ssh-copy-id? [Y/n] "
-    read -r copy_answer
-    if [[ ! "${copy_answer}" =~ ^[Nn]$ ]]; then
-      info "Running ssh-copy-id (you may be prompted for the relay password)..."
-      if ssh-copy-id -i "${ssh_key_path}" -p "${relay_port}" \
-          "${relay_user}@${relay_host}"; then
-        info "Key copied to relay successfully."
-      else
-        error "ssh-copy-id failed."
-        echo ""
-        info "You can try manually:"
-        echo "  ssh-copy-id -i ${ssh_key_path} -p ${relay_port} ${relay_user}@${relay_host}"
-        echo ""
-        error "Please add the key to the relay, then re-run this script."
-        return 1
-      fi
-    else
-      info "Please add the public key to the relay manually, then re-run this script."
-      echo "  ssh-copy-id -i ${ssh_key_path} -p ${relay_port} ${relay_user}@${relay_host}"
-      return 0
-    fi
+  # Verify-first pubkey install on the relay. Abort before systemd if
+  # auth cannot be established, so the tunnel is never left silently
+  # retrying behind a "Setup Complete" message.
+  if ! ensure_pubkey_on_host \
+        "relay" \
+        "${relay_user}@${relay_host}" \
+        "${relay_port}" \
+        "${ssh_key_path}"; then
+    error "Cannot establish pubkey auth to the relay. Aborting before systemd."
+    error "Re-run setup-relay.sh on the relay to ensure PubkeyAuthentication yes,"
+    error "or confirm ${relay_user} can log in, then re-run this script."
+    return 1
   fi
 
   # -----------------------------------------------------------------
