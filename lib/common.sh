@@ -607,7 +607,11 @@ ensure_pubkey_on_host() {
 
   error "Key installed on ${label}, but pubkey auth still fails."
   error "Possible causes:"
-  error "  1. ${label} sshd has PubkeyAuthentication no — re-run setup-relay.sh on the relay."
+  if [[ "${label}" == "relay" ]]; then
+    error "  1. relay sshd has PubkeyAuthentication no — re-run setup-relay.sh on the relay."
+  else
+    error "  1. ${label} sshd may have PubkeyAuthentication no — check sshd_config on ${label}."
+  fi
   error "  2. ~/.ssh or ~/.ssh/authorized_keys permissions too loose on ${label}."
   error "  3. sshd is restricting the user (AllowUsers / Match block)."
   return 1

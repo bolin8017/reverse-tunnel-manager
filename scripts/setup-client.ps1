@@ -271,7 +271,13 @@ function Assert-PubkeyOnHost {
     return $true
   }
   Write-Err "Key installed on $Label, but pubkey auth still fails."
-  Write-Err "Possible causes: PubkeyAuthentication no on the relay, loose perms on ~/.ssh, sshd AllowUsers restriction."
+  if ($Label -eq 'relay') {
+    Write-Err "  1. relay sshd may have PubkeyAuthentication no — re-run setup-relay.sh on the relay."
+  } else {
+    Write-Err "  1. $Label sshd may have PubkeyAuthentication no — check sshd_config on $Label."
+  }
+  Write-Err "  2. ~/.ssh or ~/.ssh/authorized_keys permissions too loose on $Label."
+  Write-Err "  3. sshd on $Label is restricting the user (AllowUsers / Match block)."
   return $false
 }
 
