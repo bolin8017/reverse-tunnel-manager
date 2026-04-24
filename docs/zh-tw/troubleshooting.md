@@ -78,7 +78,7 @@ ssh -v my-remote
 
 ```bash
 # 在 relay 上
-sudo sshd -T | grep -E 'allowtcpforwarding|clientalive'
+sudo sshd -T | grep -E 'allowtcpforwarding|clientalive|pubkeyauthentication'
 ```
 
 ## 解除安裝

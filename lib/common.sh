@@ -503,3 +503,116 @@ confirm_or_exit() {
     return 1
   fi
 }
+
+#######################################
+# Test pubkey authentication to a host using a specific key.
+# Uses BatchMode (never prompts) and IdentitiesOnly=yes (ignores other
+# keys that may be loaded in ssh-agent) so a false positive from an
+# unrelated key is not possible. Accepts unknown host keys on first
+# contact via StrictHostKeyChecking=accept-new.
+# Arguments:
+#   destination — user@host.
+#   port        — SSH port.
+#   key_path    — private key path.
+#   proxy_jump  — optional "user@host:port" for ProxyJump (may be empty).
+# Returns:
+#   0 if pubkey auth succeeds, non-zero otherwise.
+#######################################
+verify_pubkey_auth() {
+  local destination="$1"
+  local port="$2"
+  local key_path="$3"
+  local proxy_jump="${4:-}"
+
+  local -a ssh_opts=(
+    -o BatchMode=yes
+    -o PreferredAuthentications=publickey
+    -o IdentitiesOnly=yes
+    -o ConnectTimeout=10
+    -o StrictHostKeyChecking=accept-new
+    -i "${key_path}"
+    -p "${port}"
+  )
+  if [[ -n "${proxy_jump}" ]]; then
+    ssh_opts+=(-o "ProxyJump=${proxy_jump}")
+  fi
+
+  ssh "${ssh_opts[@]}" "${destination}" true 2>/dev/null
+}
+
+#######################################
+# Install a public key on a remote host via ssh-copy-id.
+# Prompts interactively for the target host's password.
+# Arguments:
+#   destination — user@host.
+#   port        — SSH port.
+#   key_path    — private key path (public key is ${key_path}.pub).
+#   proxy_jump  — optional "user@host:port" for ProxyJump (may be empty).
+# Returns:
+#   ssh-copy-id's exit status.
+#######################################
+install_pubkey() {
+  local destination="$1"
+  local port="$2"
+  local key_path="$3"
+  local proxy_jump="${4:-}"
+
+  local -a opts=(-i "${key_path}.pub" -p "${port}")
+  if [[ -n "${proxy_jump}" ]]; then
+    opts+=(-o "ProxyJump=${proxy_jump}")
+  fi
+
+  ssh-copy-id "${opts[@]}" "${destination}"
+}
+
+#######################################
+# Ensure pubkey auth to a host works: probe → install if needed → probe
+# again. Idempotent: a host that already works needs no password prompt.
+# Arguments:
+#   label       — human-readable label for logs (e.g., "relay", "remote").
+#   destination — user@host.
+#   port        — SSH port.
+#   key_path    — private key path.
+#   proxy_jump  — optional "user@host:port" for ProxyJump (may be empty).
+# Outputs:
+#   Progress messages via info / warn / error.
+# Returns:
+#   0 if pubkey auth is working at the end; 1 if still failing.
+#######################################
+ensure_pubkey_on_host() {
+  local label="$1"
+  local destination="$2"
+  local port="$3"
+  local key_path="$4"
+  local proxy_jump="${5:-}"
+
+  info "Checking pubkey auth to ${label} (${destination})..."
+  if verify_pubkey_auth "${destination}" "${port}" "${key_path}" "${proxy_jump}"; then
+    info "Pubkey auth to ${label} — OK"
+    return 0
+  fi
+
+  warn "Pubkey auth to ${label} not working — installing key now."
+  info "You will be prompted for the ${label} password (for ssh-copy-id)."
+  if ! install_pubkey "${destination}" "${port}" "${key_path}" "${proxy_jump}"; then
+    error "ssh-copy-id failed for ${label} (${destination})."
+    error "Verify the password and network reachability, then re-run."
+    return 1
+  fi
+
+  if verify_pubkey_auth "${destination}" "${port}" "${key_path}" "${proxy_jump}"; then
+    info "Pubkey auth to ${label} — verified"
+    return 0
+  fi
+
+  error "Key installed on ${label}, but pubkey auth still fails."
+  error "Possible causes:"
+  if [[ "${label}" == "relay" ]]; then
+    error "  1. relay sshd has PubkeyAuthentication no — re-run setup-relay.sh on the relay."
+  else
+    error "  1. ${label} sshd may have PubkeyAuthentication no — check sshd_config on ${label}."
+  fi
+  error "  2. ~/.ssh or ~/.ssh/authorized_keys permissions too loose on ${label}."
+  error "  3. sshd is restricting the user (AllowUsers / Match block)."
+  return 1
+}
