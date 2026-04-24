@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
   Configure the client machine (laptop) to connect through a relay server
@@ -132,15 +132,14 @@ function Remove-SshHostBlock {
   while ($output.Count -gt 0 -and [string]::IsNullOrWhiteSpace($output[-1])) {
     $output = $output[0..($output.Count - 2)]
   }
-  Set-Content -Path $ConfigPath -Value ($output -join "`n") -NoNewline
-  Add-Content -Path $ConfigPath -Value ''
+  Write-FileNoBom -Path $ConfigPath -Content (($output -join "`n") + "`n")
 }
 
 function Set-SshHostBlock {
   param([string]$ConfigPath, [string]$HostName, [string]$BlockContent)
   Ensure-SshDirectory
   if (-not (Test-Path $ConfigPath)) {
-    Set-Content -Path $ConfigPath -Value $BlockContent
+    Write-FileNoBom -Path $ConfigPath -Content ($BlockContent + "`n")
     Write-Info "Created $ConfigPath"
     return
   }
@@ -156,7 +155,7 @@ function Set-SshHostBlock {
       $backup = "$ConfigPath.bak.$(Get-Date -Format 'yyyyMMddHHmmss')"
       Copy-Item $ConfigPath $backup
       Remove-SshHostBlock -ConfigPath $ConfigPath -HostName $HostName
-      Add-Content -Path $ConfigPath -Value "`n$BlockContent"
+      Add-FileNoBom -Path $ConfigPath -Content "`n$BlockContent"
       Write-Info "Updated Host $HostName block"
     }
     else {
@@ -164,34 +163,116 @@ function Set-SshHostBlock {
     }
   }
   else {
-    Add-Content -Path $ConfigPath -Value "`n$BlockContent"
+    Add-FileNoBom -Path $ConfigPath -Content "`n$BlockContent"
     Write-Info "Added Host $HostName block to $ConfigPath"
   }
 }
 
-# ── ssh-copy-id equivalent ────────────────────────────────────────
+# ── UTF-8 no-BOM file write (PS 5.1 defaults emit BOMs) ──────────
 
-function Copy-SshKeyToRelay {
+function Write-FileNoBom {
+  param([Parameter(Mandatory)][string]$Path, [string]$Content = '')
+  $enc = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllText($Path, $Content, $enc)
+}
+
+function Add-FileNoBom {
+  param([Parameter(Mandatory)][string]$Path, [string]$Content = '')
+  $enc = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::AppendAllText($Path, $Content, $enc)
+}
+
+# ── Pubkey install / verify helpers ──────────────────────────────
+# Windows OpenSSH does NOT ship ssh-copy-id; Install-Pubkey pipes the
+# pubkey over ssh and uses a POSIX dedup snippet on the target.
+
+function Test-PubkeyAuth {
   param(
-    [string]$KeyPath, [string]$RelayUser,
-    [string]$RelayHost, [string]$RelayPort
+    [Parameter(Mandatory)][string]$Destination,
+    [Parameter(Mandatory)][int]$Port,
+    [Parameter(Mandatory)][string]$KeyPath,
+    [string]$ProxyJump = ''
   )
-  $pubKeyPath = "$KeyPath.pub"
-  if (-not (Test-Path $pubKeyPath)) {
-    Write-Err "Public key not found: $pubKeyPath"
+  $sshArgs = @(
+    '-o', 'BatchMode=yes',
+    '-o', 'PreferredAuthentications=publickey',
+    '-o', 'IdentitiesOnly=yes',
+    '-o', 'ConnectTimeout=10',
+    '-o', 'StrictHostKeyChecking=accept-new',
+    '-i', $KeyPath,
+    '-p', "$Port"
+  )
+  if ($ProxyJump) { $sshArgs += @('-o', "ProxyJump=$ProxyJump") }
+  $sshArgs += @($Destination, 'true')
+  & ssh @sshArgs 2>$null
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Install-Pubkey {
+  param(
+    [Parameter(Mandatory)][string]$Destination,
+    [Parameter(Mandatory)][int]$Port,
+    [Parameter(Mandatory)][string]$KeyPath,
+    [string]$ProxyJump = ''
+  )
+  $pubPath = "$KeyPath.pub"
+  if (-not (Test-Path $pubPath)) {
+    Write-Err "Public key not found at $pubPath"
     return $false
   }
-  $pubKey = (Get-Content $pubKeyPath -Raw).Trim()
-  Write-Info 'Copying public key to relay (you may be prompted for the password)...'
-  try {
-    ssh -p $RelayPort "$RelayUser@$RelayHost" `
-      "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$pubKey' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+  $pub = (Get-Content -Raw $pubPath).Trim()
+
+  $sshArgs = @(
+    '-o', 'IdentitiesOnly=yes',
+    '-o', 'StrictHostKeyChecking=accept-new',
+    '-i', $KeyPath,
+    '-p', "$Port"
+  )
+  if ($ProxyJump) { $sshArgs += @('-o', "ProxyJump=$ProxyJump") }
+  $remote = @'
+set -e
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+KEY=$(cat)
+if ! grep -qxF -- "$KEY" ~/.ssh/authorized_keys; then
+  printf '%s\n' "$KEY" >> ~/.ssh/authorized_keys
+  echo INSTALLED
+else
+  echo ALREADY_PRESENT
+fi
+'@
+  $sshArgs += @($Destination, $remote)
+
+  $pub | & ssh @sshArgs
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Assert-PubkeyOnHost {
+  param(
+    [Parameter(Mandatory)][string]$Label,
+    [Parameter(Mandatory)][string]$Destination,
+    [Parameter(Mandatory)][int]$Port,
+    [Parameter(Mandatory)][string]$KeyPath,
+    [string]$ProxyJump = ''
+  )
+  Write-Info "Checking pubkey auth to $Label ($Destination)..."
+  if (Test-PubkeyAuth -Destination $Destination -Port $Port -KeyPath $KeyPath -ProxyJump $ProxyJump) {
+    Write-Info "Pubkey auth to $Label -- OK"
     return $true
   }
-  catch {
-    Write-Err "Failed to copy key to relay: $_"
+  Write-Warn "Pubkey auth to $Label not working -- installing key now."
+  Write-Info "You will be prompted for the $Label password."
+  if (-not (Install-Pubkey -Destination $Destination -Port $Port -KeyPath $KeyPath -ProxyJump $ProxyJump)) {
+    Write-Err "Pubkey install failed for $Label ($Destination)."
     return $false
   }
+  if (Test-PubkeyAuth -Destination $Destination -Port $Port -KeyPath $KeyPath -ProxyJump $ProxyJump) {
+    Write-Info "Pubkey auth to $Label -- verified"
+    return $true
+  }
+  Write-Err "Key installed on $Label, but pubkey auth still fails."
+  Write-Err "Possible causes: PubkeyAuthentication no on the relay, loose perms on ~/.ssh, sshd AllowUsers restriction."
+  return $false
 }
 
 # ── Main ───────────────────────────────────────────────────────────
@@ -312,7 +393,7 @@ Host $connectionName
     HostName localhost
     Port $tunnelPort
     User $remoteUser
-    IdentityFile $sshKeyPath
+    IdentityFile "$sshKeyPath"
     ProxyJump ${relayUser}@${relayHost}:${relayPort}
     ServerAliveInterval 60
     ServerAliveCountMax 3
@@ -354,45 +435,33 @@ Host $connectionName
     Write-Info "New SSH key generated: $sshKeyPath"
   }
 
-  # ── Verify relay access ──
-  Write-Info "Verifying SSH access to relay ($relayUser@${relayHost}:$relayPort)..."
-  $sshTest = $null
-  try {
-    $sshTest = & ssh -o ConnectTimeout=10 -o BatchMode=yes `
-      -p $relayPort -i $sshKeyPath `
-      "$relayUser@$relayHost" 'echo ok' 2>$null
-  }
-  catch {}
-
-  if ($sshTest -eq 'ok') {
-    Write-Info 'SSH access to relay — OK'
-  }
-  else {
-    Write-Warn 'Cannot authenticate to relay with this key.'
-    Write-Ask 'Automatically copy key to relay? [Y/n] '
-    $copyAnswer = Read-Host
-    if ($copyAnswer -notmatch '^[Nn]$') {
-      $copyResult = Copy-SshKeyToRelay -KeyPath $sshKeyPath `
-        -RelayUser $relayUser -RelayHost $relayHost -RelayPort $relayPort
-      if (-not $copyResult) {
-        Write-Err 'Failed to copy key. Please add it manually, then re-run.'
-        Write-Host "  ssh-keygen -y -f $sshKeyPath | ssh -p $relayPort $relayUser@$relayHost `"cat >> ~/.ssh/authorized_keys`""
-        return
-      }
-      Write-Info 'Key copied to relay successfully.'
-    }
-    else {
-      Write-Warn 'Relay access not configured. Connection test will likely fail.'
-    }
+  # ── Install pubkey on relay (prompts for relay password if needed) ──
+  if (-not (Assert-PubkeyOnHost -Label 'relay' `
+            -Destination "$relayUser@$relayHost" `
+            -Port ([int]$relayPort) `
+            -KeyPath $sshKeyPath)) {
+    Write-Err 'Cannot establish pubkey auth to the relay. Aborting before remote install.'
+    return
   }
 
-  # ── Write SSH config ──
+  # ── Write SSH config ── (before remote install so connection alias works)
   if ($needsSshConfig) {
     Write-Info "Writing SSH config block for alias: $connectionName"
     Set-SshHostBlock -ConfigPath $configPath -HostName $connectionName -BlockContent $expectedBlock
   }
   else {
     Write-Info 'SSH config is already up to date — skipping.'
+  }
+
+  # ── Install pubkey on remote (via ProxyJump through the relay) ──
+  if (-not (Assert-PubkeyOnHost -Label 'remote' `
+            -Destination "$remoteUser@localhost" `
+            -Port ([int]$tunnelPort) `
+            -KeyPath $sshKeyPath `
+            -ProxyJump "$relayUser@${relayHost}:$relayPort")) {
+    Write-Err 'Cannot establish pubkey auth to the remote.'
+    Write-Err 'Verify the remote tunnel is active (run setup-remote.sh on the remote).'
+    return
   }
 
   # ── Connection test ──
@@ -430,8 +499,8 @@ Host $connectionName
     Write-Host '     -> On remote: systemctl --user status ssh-tunnel.service'
     Write-Host "  2. Relay unreachable"
     Write-Host "     -> Verify: ssh ${relayUser}@${relayHost} -p ${relayPort}"
-    Write-Host '  3. SSH key not authorized'
-    Write-Host '     -> Check authorized_keys on relay and remote'
+    Write-Host '  3. Tunnel port mismatch'
+    Write-Host "     -> Confirm the remote is forwarding port $tunnelPort to its local SSH port"
     Write-Host ''
     Write-Info 'Verbose debug:'
     Write-Host "  ssh -v $connectionName"
