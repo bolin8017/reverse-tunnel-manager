@@ -77,6 +77,20 @@ function Show-Summary {
   Write-Host ''
 }
 
+# ── UTF-8 no-BOM file write (PS 5.1 defaults emit BOMs) ──────────
+
+function Write-FileNoBom {
+  param([Parameter(Mandatory)][string]$Path, [string]$Content = '')
+  $enc = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllText($Path, $Content, $enc)
+}
+
+function Add-FileNoBom {
+  param([Parameter(Mandatory)][string]$Path, [string]$Content = '')
+  $enc = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::AppendAllText($Path, $Content, $enc)
+}
+
 # ── SSH config helpers ─────────────────────────────────────────────
 
 function Get-SshConfigPath {
@@ -168,20 +182,6 @@ function Set-SshHostBlock {
   }
 }
 
-# ── UTF-8 no-BOM file write (PS 5.1 defaults emit BOMs) ──────────
-
-function Write-FileNoBom {
-  param([Parameter(Mandatory)][string]$Path, [string]$Content = '')
-  $enc = New-Object System.Text.UTF8Encoding $false
-  [System.IO.File]::WriteAllText($Path, $Content, $enc)
-}
-
-function Add-FileNoBom {
-  param([Parameter(Mandatory)][string]$Path, [string]$Content = '')
-  $enc = New-Object System.Text.UTF8Encoding $false
-  [System.IO.File]::AppendAllText($Path, $Content, $enc)
-}
-
 # ── Pubkey install / verify helpers ──────────────────────────────
 # Windows OpenSSH does NOT ship ssh-copy-id; Install-Pubkey pipes the
 # pubkey over ssh and uses a POSIX dedup snippet on the target.
@@ -243,7 +243,11 @@ fi
 '@
   $sshArgs += @($Destination, $remote)
 
-  $pub | & ssh @sshArgs
+  # Discard stdout (the remote script's INSTALLED/ALREADY_PRESENT echoes)
+  # so the function's only output is the boolean return. Otherwise the
+  # echoes leak into the pipeline and callers using `if (-not (Install-Pubkey))`
+  # get unreliable truthiness from the resulting array.
+  $pub | & ssh @sshArgs | Out-Null
   return ($LASTEXITCODE -eq 0)
 }
 
