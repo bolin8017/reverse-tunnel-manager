@@ -105,7 +105,7 @@ main() {
     HostName localhost
     Port ${tunnel_port}
     User ${remote_user}
-    IdentityFile ${ssh_key_path}
+    IdentityFile \"${ssh_key_path}\"
     ProxyJump ${relay_user}@${relay_host}:${relay_port}
     ServerAliveInterval 60
     ServerAliveCountMax 3"
@@ -140,39 +140,21 @@ main() {
   fi
 
   # -----------------------------------------------------------------
-  # Verify relay access and copy key if needed
+  # Install pubkey on relay (prompts for relay password if needed)
   # -----------------------------------------------------------------
-  info "Verifying SSH access to relay (${relay_user}@${relay_host}:${relay_port})..."
-  if ssh -o ConnectTimeout=10 -o BatchMode=yes \
-      -p "${relay_port}" -i "${ssh_key_path}" \
-      "${relay_user}@${relay_host}" "true" 2>/dev/null; then
-    info "SSH access to relay — OK"
-  else
-    warn "Cannot authenticate to relay with this key."
-    echo ""
-    ask "Automatically copy key to relay with ssh-copy-id? [Y/n] "
-    read -r copy_answer
-    if [[ ! "${copy_answer}" =~ ^[Nn]$ ]]; then
-      info "Running ssh-copy-id (you may be prompted for the relay password)..."
-      if ssh-copy-id -i "${ssh_key_path}" -p "${relay_port}" \
-          "${relay_user}@${relay_host}"; then
-        info "Key copied to relay successfully."
-      else
-        error "ssh-copy-id failed."
-        echo ""
-        info "You can try manually:"
-        echo "  ssh-copy-id -i ${ssh_key_path} -p ${relay_port} ${relay_user}@${relay_host}"
-        echo ""
-        error "Please add the key to the relay, then re-run this script."
-        return 1
-      fi
-    else
-      warn "Relay access not configured. Connection test will likely fail."
-    fi
+  if ! ensure_pubkey_on_host \
+        "relay" \
+        "${relay_user}@${relay_host}" \
+        "${relay_port}" \
+        "${ssh_key_path}"; then
+    error "Cannot establish pubkey auth to the relay. Aborting before remote install."
+    return 1
   fi
 
   # -----------------------------------------------------------------
-  # SSH config setup (only if needed)
+  # SSH config setup (only if needed) — must be written before the
+  # remote pubkey install so the connection test at the end can use
+  # the alias.
   # -----------------------------------------------------------------
   if [[ "${needs_ssh_config}" == "true" ]]; then
     info "Writing SSH config block for host alias: ${connection_name}"
@@ -181,6 +163,20 @@ main() {
     info "SSH config permissions set to 600."
   else
     info "SSH config is already up to date — skipping."
+  fi
+
+  # -----------------------------------------------------------------
+  # Install pubkey on remote (via ProxyJump through the relay)
+  # -----------------------------------------------------------------
+  if ! ensure_pubkey_on_host \
+        "remote" \
+        "${remote_user}@localhost" \
+        "${tunnel_port}" \
+        "${ssh_key_path}" \
+        "${relay_user}@${relay_host}:${relay_port}"; then
+    error "Cannot establish pubkey auth to the remote."
+    error "Verify the remote's reverse tunnel is active (run setup-remote.sh on it)."
+    return 1
   fi
 
   # -----------------------------------------------------------------
@@ -213,8 +209,8 @@ main() {
     echo "     -> On remote: systemctl --user status ssh-tunnel.service"
     echo "  2. Relay unreachable"
     echo "     -> Verify: ssh ${relay_user}@${relay_host} -p ${relay_port}"
-    echo "  3. SSH key not authorized"
-    echo "     -> Check authorized_keys on relay and remote"
+    echo "  3. Tunnel port mismatch"
+    echo "     -> Confirm the remote is forwarding port ${tunnel_port} to its local SSH port"
     echo ""
     info "Verbose debug:"
     echo "  ssh -v ${connection_name}"
